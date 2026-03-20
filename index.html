@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WytNet - Social Community Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --wyt-primary: #5c59f2;
+        --wyt-secondary: #f0f3ff;
+        --wyt-accent: #6366f1;
+        --wyt-bg-sidebar: #f9faff;
+        --wyt-border: #e5e7eb;
+      }
+      body {
+        font-family: 'Inter', sans-serif;
+      }
+      .bg-wyt-primary { background-color: var(--wyt-primary); }
+      .text-wyt-primary { color: var(--wyt-primary); }
+      .border-wyt-primary { border-color: var(--wyt-primary); }
+      .bg-wyt-gradient { background: linear-gradient(90deg, #6366f1 0%, #a855f7 100%); }
+      .bg-wyt-card-gradient { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); }
+    </style>
+  </head>
+  <body class="bg-[#f8fafc] text-slate-800">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
