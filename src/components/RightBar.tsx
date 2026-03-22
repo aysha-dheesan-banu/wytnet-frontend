@@ -1,6 +1,12 @@
 import React from 'react';
 
-const RightBar = ({ onNewPost, needsCount, offersCount }) => {
+interface RightBarProps {
+  onNewPost: () => void;
+  needsCount: number;
+  offersCount: number;
+}
+
+const RightBar: React.FC<RightBarProps> = ({ onNewPost, needsCount, offersCount }) => {
   return (
     <aside className="w-80 bg-[#f8fafc] p-6 shrink-0 h-screen sticky top-[64px]" data-purpose="widgets-column">
       {/* Live Feed Widget */}

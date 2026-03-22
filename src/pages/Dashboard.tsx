@@ -8,15 +8,16 @@ import { getUserById } from '../api/user';
 import { getUserIdFromToken } from '../utils/auth';
 import { getUserFavorites } from '../api/favorite';
 import { getUserFollowing } from '../api/follow';
+import { Post, User, Favorite, Follow } from '../api/types';
 
-const Dashboard = () => {
-  const [posts, setPosts] = useState([]);
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('All');
-  const [userFollows, setUserFollows] = useState([]);
-  const [userFavs, setUserFavs] = useState([]);
+const Dashboard: React.FC = () => {
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<string>('All');
+  const [userFollows, setUserFollows] = useState<Follow[]>([]);
+  const [userFavs, setUserFavs] = useState<Favorite[]>([]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -29,21 +30,21 @@ const Dashboard = () => {
       ]);
 
       const rawPosts = postsData.items || [];
-      setUserFollows(followsData.items || []);
-      setUserFavs(favsData.items || []);
+      setUserFollows(followsData.items as Follow[] || []);
+      setUserFavs(favsData.items as Favorite[] || []);
 
       if (userId) {
-        getUserById(userId).then(userData => setUser(userData.item)).catch(console.error);
+        getUserById(userId).then(userData => setUser(userData.item as User)).catch(console.error);
       }
 
       const uniqueUserIds = [...new Set(rawPosts.map(post => post.user_id))];
       const usersData = await Promise.all(
-        uniqueUserIds.map(id => getUserById(id).catch(() => ({ item: { username: 'User' } })))
+        uniqueUserIds.map(id => getUserById(id).catch(() => ({ item: { username: 'User' } as User })))
       );
 
-      const userMap = {};
+      const userMap: Record<string, User> = {};
       uniqueUserIds.forEach((id, index) => {
-        userMap[id] = usersData[index].item;
+        userMap[id] = usersData[index].item as User;
       });
 
       const enrichedPosts = rawPosts.map(post => ({
@@ -71,7 +72,6 @@ const Dashboard = () => {
     return true; 
   });
 
-  // Dynamic counts based on filtered view
   const needsCount = filteredPosts.filter(p => p.post_type === 'NEED').length;
   const offersCount = filteredPosts.filter(p => p.post_type === 'OFFER').length;
 
@@ -185,7 +185,7 @@ const Dashboard = () => {
                   key={post.id} 
                   post={post} 
                   onDelete={fetchData} 
-                  currentUserId={user?.id}
+                  currentUserId={user?.id || null}
                   initialIsFollowing={userFollows.some(f => f.following_id === post.user_id)}
                   initialIsLiked={userFavs.some(f => f.post_id === post.id)}
                 />

@@ -1,7 +1,12 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { User } from '../api/types';
 
-const Sidebar = ({ user }) => {
+interface SidebarProps {
+  user: User | null;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ user }) => {
   return (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col p-4 shrink-0 h-screen sticky top-[64px]" data-purpose="main-navigation">
       {/* Profile Preview Card */}

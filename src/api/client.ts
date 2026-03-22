@@ -1,5 +1,9 @@
-import axios from 'axios';
+import axios, { InternalAxiosRequestConfig } from 'axios';
 import { getToken, removeToken } from '../utils/auth';
+
+interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+}
 
 const client = axios.create({
   baseURL: 'http://localhost:8000',
@@ -10,7 +14,7 @@ const client = axios.create({
 client.interceptors.request.use(
   (config) => {
     const token = getToken();
-    if (token) {
+    if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -22,15 +26,14 @@ client.interceptors.request.use(
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config as CustomAxiosRequestConfig;
 
     // Check if error is 401 and it's not a retry already
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
-        // Call refresh token endpoint (which sets new access token or handles cookie)
-        // Note: The backend refresh endpoint usually returns a new access token
+        // Call refresh token endpoint
         const res = await axios.post(
           'http://localhost:8000/auth/refresh',
           {},
@@ -39,10 +42,13 @@ client.interceptors.response.use(
 
         if (res.status === 200 || res.status === 201) {
           const { access_token } = res.data.item;
-          import('../utils/auth').then(({ setToken }) => setToken(access_token));
+          const { setToken } = await import('../utils/auth');
+          setToken(access_token);
           
           // Retry the original request with new token
-          originalRequest.headers.Authorization = `Bearer ${access_token}`;
+          if (originalRequest.headers) {
+            originalRequest.headers.Authorization = `Bearer ${access_token}`;
+          }
           return client(originalRequest);
         }
       } catch (refreshError) {

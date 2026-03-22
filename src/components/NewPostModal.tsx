@@ -1,13 +1,36 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPost } from '../api/post';
 import { searchObjects } from '../api/object';
+import { ObjectItem } from '../api/types';
 
-const NewPostModal = ({ onClose, onSuccess }) => {
+interface NewPostModalProps {
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+interface FormData {
+  post_type: 'NEED' | 'OFFER';
+  object_id: string;
+  object_name: string;
+  location: string;
+  title: string;
+  description: string;
+  validity_days: number;
+}
+
+interface SmartDetected {
+  type: 'NEED' | 'OFFER';
+  entity: string;
+  location: string;
+  matchedObjectId: string | null;
+}
+
+const NewPostModal: React.FC<NewPostModalProps> = ({ onClose, onSuccess }) => {
   const [smartText, setSmartText] = useState('');
-  const [smartDetected, setSmartDetected] = useState(null);
+  const [smartDetected, setSmartDetected] = useState<SmartDetected | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     post_type: 'NEED',
     object_id: '',
     object_name: '',
@@ -18,22 +41,18 @@ const NewPostModal = ({ onClose, onSuccess }) => {
   });
 
   const [objectQuery, setObjectQuery] = useState('');
-  const [objectResults, setObjectResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const [objectResults, setObjectResults] = useState<ObjectItem[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const searchRef = useRef(null);
+  const searchRef = useRef<HTMLDivElement>(null);
 
-  const [recommendedEntities, setRecommendedEntities] = useState([]);
+  const [recommendedEntities, setRecommendedEntities] = useState<ObjectItem[]>([]);
 
   useEffect(() => {
     const fetchRecommendations = async () => {
       try {
-        const data = await searchObjects('a'); // Get some common objects
-        // or just use getObjects
-        import('../api/object').then(async ({ getObjects }) => {
-          const res = await getObjects(0, 5);
-          setRecommendedEntities(res.items || []);
-        });
+        const { getObjects } = await import('../api/object');
+        const res = await getObjects(0, 5);
+        setRecommendedEntities(res.items || []);
       } catch (error) {
         console.error('Failed to fetch recommendations:', error);
       }
@@ -41,19 +60,15 @@ const NewPostModal = ({ onClose, onSuccess }) => {
     fetchRecommendations();
   }, []);
 
-  // Debounced Object Search
   useEffect(() => {
     const timer = setTimeout(async () => {
       if (objectQuery.length >= 2) {
-        setIsSearching(true);
         try {
           const data = await searchObjects(objectQuery);
           setObjectResults(data.items || []);
           setShowDropdown(true);
         } catch (error) {
           console.error('Search failed:', error);
-        } finally {
-          setIsSearching(false);
         }
       } else {
         setObjectResults([]);
@@ -68,9 +83,8 @@ const NewPostModal = ({ onClose, onSuccess }) => {
     if (!smartText) return;
     setIsAnalyzing(true);
     
-    // Basic Frontend Parsing
     const text = smartText.toLowerCase();
-    let type = 'NEED';
+    let type: 'NEED' | 'OFFER' = 'NEED';
     if (text.includes('offer') || text.includes('have') || text.includes('sell') || text.includes('give')) type = 'OFFER';
     
     const words = text.replace(/[.,!?;:]/g, "").split(/\s+/);
@@ -79,18 +93,15 @@ const NewPostModal = ({ onClose, onSuccess }) => {
     
     let loc = text.includes('in ') ? text.split('in ')[1].split(' ')[0] : '';
 
-    // Verify entity in backend by checking potential words
-    let matchedObject = null;
+    let matchedObject: ObjectItem | null = null;
     
-    // Try to find a match among potential words
     for (const word of potentialEntities) {
       try {
         const searchData = await searchObjects(word);
         if (searchData.items && searchData.items.length > 0) {
-          // Check if any result is an exact or very close match
           const exactMatch = searchData.items.find(item => item.name.toLowerCase() === word);
           matchedObject = exactMatch || searchData.items[0];
-          if (matchedObject) break; // Found one!
+          if (matchedObject) break;
         }
       } catch (error) {
         console.error('Failed to search entity:', error);
@@ -121,7 +132,7 @@ const NewPostModal = ({ onClose, onSuccess }) => {
     setSmartDetected(null);
   };
 
-  const handleApplyRecommended = (obj) => {
+  const handleApplyRecommended = (obj: ObjectItem) => {
     setFormData({
       ...formData,
       object_id: obj.id,
@@ -131,15 +142,15 @@ const NewPostModal = ({ onClose, onSuccess }) => {
     setObjectQuery(obj.name);
   };
 
-  const fileInputRef = useRef(null);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const handleImageClick = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (file) {
       setSelectedFile(file);
     }
@@ -147,7 +158,7 @@ const NewPostModal = ({ onClose, onSuccess }) => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.object_id || !formData.post_type || !formData.title || !formData.location) {
       alert('Please fill all required fields (Object, Type, Title, Location)');
@@ -155,17 +166,18 @@ const NewPostModal = ({ onClose, onSuccess }) => {
     }
 
     setIsSubmitting(true);
-    // Calculate real validity date
     const validUntil = new Date();
     validUntil.setDate(validUntil.getDate() + formData.validity_days);
 
-    const userId = import.meta.env.VITE_USER_ID || (await import('../utils/auth')).getUserIdFromToken();
+    const { getUserIdFromToken } = await import('../utils/auth');
+    const userId = (import.meta as any).env.VITE_USER_ID || getUserIdFromToken();
 
-    let imageUrl = null;
+    let imageUrl: string | null = null;
     if (selectedFile) {
       try {
-        const uploadRes = await import('../api/post').then(({ uploadImage }) => uploadImage(selectedFile));
-        imageUrl = uploadRes.url;
+        const { uploadImage } = await import('../api/post');
+        const uploadRes = await uploadImage(selectedFile);
+        imageUrl = uploadRes.item?.url || null; // Adjusted based on BaseResponse
       } catch (uploadError) {
         console.error('Image upload failed:', uploadError);
       }
@@ -173,15 +185,15 @@ const NewPostModal = ({ onClose, onSuccess }) => {
 
     try {
       await createPost({
-        user_id: userId,
+        user_id: userId as string,
         post_type: formData.post_type,
         object_id: formData.object_id,
         location: formData.location,
         title: formData.title,
         description: formData.description,
         valid_until: validUntil.toISOString(),
-        image_url: imageUrl
-      });
+        image_url: imageUrl || undefined
+      } as any);
       onSuccess();
     } catch (error) {
       console.error('Failed to create post:', error);
@@ -204,11 +216,11 @@ const NewPostModal = ({ onClose, onSuccess }) => {
 
         <div style={{ padding: '2rem' }}>
           {/* Smart Fill Section */}
-          <div style={{ background: '#f8f4ff', padding: '1.5rem', borderRadius: '12px', border: '1px dashed var(--primary-color)', marginBottom: '2rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--primary-color)' }}>
+          <div style={{ background: '#f8f4ff', padding: '1.5rem', borderRadius: '12px', border: '1px dashed #5c59f2', marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#5c59f2' }}>
               <span>✨</span>
               <span style={{ fontWeight: '600' }}>Smart Fill</span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Type a sentence and we'll auto-detect entity, location & post type</span>
+              <span style={{ fontSize: '0.75rem', color: '#666' }}>Type a sentence and we'll auto-detect entity, location & post type</span>
             </div>
             <div style={{ display: 'flex', gap: '1rem' }}>
               <input 
@@ -247,7 +259,7 @@ const NewPostModal = ({ onClose, onSuccess }) => {
                 </div>
                 
                 <div style={{ marginBottom: '1rem' }}>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>RECOMMENDED ENTITIES</p>
+                  <p style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.5rem' }}>RECOMMENDED ENTITIES</p>
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                     {recommendedEntities.map(obj => (
                       <span key={obj.id} style={{ padding: '4px 12px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '0.75rem', background: 'white', cursor: 'pointer' }} onClick={() => handleApplyRecommended(obj)}>
@@ -257,18 +269,7 @@ const NewPostModal = ({ onClose, onSuccess }) => {
                   </div>
                 </div>
 
-                {smartDetected.location && (
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>RECOMMENDED LOCATIONS</p>
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span style={{ padding: '4px 12px', borderRadius: '4px', border: '1px solid #c6f6d5', fontSize: '0.75rem', background: '#f0fff4', color: '#2f855a', cursor: 'pointer' }}>
-                        {smartDetected.location} <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>New Location</span>
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <button className="premium-btn" style={{ width: '100%', padding: '1rem', background: 'var(--purple-gradient)' }} onClick={handleApplySmartFill}>
+                <button className="premium-btn" style={{ width: '100%', padding: '1rem' }} onClick={handleApplySmartFill}>
                   Apply Best Match
                 </button>
               </div>
@@ -277,7 +278,6 @@ const NewPostModal = ({ onClose, onSuccess }) => {
 
           {/* Main Form */}
           <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '2rem' }}>
-            {/* Left: Image Upload */}
             <div 
               onClick={handleImageClick}
               style={{ 
@@ -289,7 +289,7 @@ const NewPostModal = ({ onClose, onSuccess }) => {
                 justifyContent: 'center',
                 padding: '2rem',
                 height: '300px',
-                color: 'var(--text-muted)',
+                color: '#666',
                 cursor: 'pointer',
                 overflow: 'hidden',
                 position: 'relative'
@@ -322,16 +322,14 @@ const NewPostModal = ({ onClose, onSuccess }) => {
               )}
             </div>
 
-            {/* Right: Form Controls */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              {/* Type Toggle */}
               <div style={{ display: 'flex', borderRadius: '12px', border: '1px solid #ddd', overflow: 'hidden' }}>
                 <button 
                   type="button"
                   style={{ 
                     flex: 1, padding: '1rem', 
                     background: formData.post_type === 'NEED' ? '#f0f4ff' : 'white',
-                    color: formData.post_type === 'NEED' ? 'var(--primary-color)' : 'var(--text-main)',
+                    color: formData.post_type === 'NEED' ? '#5c59f2' : '#333',
                     borderRadius: 0,
                     borderRight: '1px solid #ddd'
                   }}
@@ -344,7 +342,7 @@ const NewPostModal = ({ onClose, onSuccess }) => {
                   style={{ 
                     flex: 1, padding: '1rem', 
                     background: formData.post_type === 'OFFER' ? '#f0f4ff' : 'white',
-                    color: formData.post_type === 'OFFER' ? 'var(--primary-color)' : 'var(--text-main)',
+                    color: formData.post_type === 'OFFER' ? '#5c59f2' : '#333',
                     borderRadius: 0
                   }}
                   onClick={() => setFormData({...formData, post_type: 'OFFER'})}
@@ -353,7 +351,6 @@ const NewPostModal = ({ onClose, onSuccess }) => {
                 </button>
               </div>
 
-              {/* Object Search */}
               <div style={{ position: 'relative' }} ref={searchRef}>
                 <label>What are you looking for? *</label>
                 <input 
@@ -366,7 +363,7 @@ const NewPostModal = ({ onClose, onSuccess }) => {
                 {showDropdown && objectResults.length > 0 && (
                   <div style={{ 
                     position: 'absolute', top: '100%', left: 0, width: '100%', 
-                    background: 'white', borderRadius: '8px', boxShadow: 'var(--shadow)', 
+                    background: 'white', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', 
                     zIndex: 10, border: '1px solid #eee' 
                   }}>
                     {objectResults.map(obj => (
@@ -418,11 +415,10 @@ const NewPostModal = ({ onClose, onSuccess }) => {
                 />
               </div>
 
-              {/* Validity */}
               <div>
                 <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   Post Validity
-                  <span style={{ fontSize: '0.875rem', color: 'var(--primary-color)', fontWeight: '600' }}>
+                  <span style={{ fontSize: '0.875rem', color: '#5c59f2', fontWeight: '600' }}>
                     Expiring on: {new Date(new Date().setDate(new Date().getDate() + formData.validity_days)).toLocaleDateString()}
                   </span>
                 </label>
@@ -433,8 +429,8 @@ const NewPostModal = ({ onClose, onSuccess }) => {
                       type="button"
                       style={{ 
                         padding: '6px 12px', borderRadius: '6px', border: '1px solid #ddd',
-                        background: formData.validity_days === days ? 'var(--primary-color)' : 'white',
-                        color: formData.validity_days === days ? 'white' : 'var(--text-main)',
+                        background: formData.validity_days === days ? '#5c59f2' : 'white',
+                        color: formData.validity_days === days ? 'white' : '#333',
                         fontSize: '0.875rem'
                       }}
                       onClick={() => setFormData({...formData, validity_days: days})}
