@@ -6,7 +6,7 @@ interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
 }
 
 const client = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
   withCredentials: true, // Required for httpOnly cookies (refresh token)
 });
 
@@ -34,8 +34,9 @@ client.interceptors.response.use(
 
       try {
         // Call refresh token endpoint
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
         const res = await axios.post(
-          'http://localhost:8000/auth/refresh',
+          `${baseUrl}/auth/refresh`,
           {},
           { withCredentials: true }
         );
