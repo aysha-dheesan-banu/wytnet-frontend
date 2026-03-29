@@ -7,6 +7,22 @@
     <title>WytNet - Social Community Dashboard</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              wyt: {
+                primary: '#5c59f2',
+                secondary: '#f0f3ff',
+                accent: '#6366f1',
+              }
+            }
+          }
+        }
+      }
+    </script>
     <!-- Google Fonts: Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <style>
@@ -16,9 +32,21 @@
         --wyt-accent: #6366f1;
         --wyt-bg-sidebar: #f9faff;
         --wyt-border: #e5e7eb;
+        --wyt-bg-main: #f8fafc;
+        --wyt-text-main: #1e293b;
+        --wyt-card-bg: #ffffff;
+      }
+      .dark {
+        --wyt-bg-main: #0f172a;
+        --wyt-text-main: #f1f5f9;
+        --wyt-card-bg: #1e293b;
+        --wyt-border: #334155;
+        --wyt-bg-sidebar: #1e293b;
       }
       body {
         font-family: 'Inter', sans-serif;
+        background-color: var(--wyt-bg-main);
+        color: var(--wyt-text-main);
       }
       .bg-wyt-primary { background-color: var(--wyt-primary); }
       .text-wyt-primary { color: var(--wyt-primary); }
@@ -26,8 +54,8 @@
       .bg-wyt-gradient { background: linear-gradient(90deg, #6366f1 0%, #a855f7 100%); }
       .bg-wyt-card-gradient { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); }
     </style>
-  </head>
-  <body class="bg-[#f8fafc] text-slate-800">
+</head>
+<body class="transition-colors duration-300">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

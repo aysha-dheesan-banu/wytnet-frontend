@@ -13,13 +13,25 @@ export interface User {
   email: string;
   username: string;
   full_name?: string;
+  name?: string;
+  nickname?: string;
+  phone?: string;
+  location?: string;
+  bio?: string;
+  gender?: string;
+  dob?: string;
+  marital_status?: string;
+  mother_tongue?: string;
+  languages?: string;
   avatar_url?: string;
+  profile_picture_url?: string;
 }
 
 export interface Post {
   id: string;
   content: string;
   user_id: string;
+  object_id: string;
   image_url?: string;
   created_at: string;
   post_type: 'NEED' | 'OFFER';
@@ -28,6 +40,83 @@ export interface Post {
   description?: string;
   valid_until?: string;
   user?: User;
+  like_count?: number;
+  comment_count?: number;
+  view_count?: number;
+  allow_like?: boolean;
+  allow_comment?: boolean;
+  allow_share?: boolean;
+  allow_response?: boolean;
+}
+
+export interface WishlistStep {
+  title: string;
+  is_completed: boolean;
+}
+
+export interface WishlistItem {
+  id: string;
+  user_id: string;
+  post_id?: string;
+  title: string;
+  description?: string;
+  status: 'ONGOING' | 'COMPLETED';
+  is_public: boolean;
+  category?: string;
+  target_date?: string;
+  steps: WishlistStep[];
+  created_at: string;
+  updated_at?: string;
+  // UI helper fields
+  progress?: number;
+  steps_count?: number;
+  completed_steps?: number;
+  visibility?: 'PUBLIC' | 'PRIVATE'; 
+}
+
+export interface Education {
+  id: string;
+  user_id: string;
+  university: string;
+  degree: string;
+  start_year: string;
+  end_year?: string;
+  grade?: string;
+  location?: string;
+  description?: string;
+}
+
+export interface Work {
+  id: string;
+  user_id: string;
+  role: string;
+  company: string;
+  type: string;
+  duration?: string;
+  start_date: string;
+  end_date?: string;
+  location?: string;
+  domain?: string;
+  description?: string;
+}
+
+export interface Social {
+  id: string;
+  user_id: string;
+  platform: string;
+  username: string;
+  link: string;
+  visibility: 'PUBLIC' | 'PRIVATE';
+}
+
+export interface Interest {
+  id: string;
+  user_id: string;
+  title: string;
+  category: string;
+  experience_years?: number;
+  level: string;
+  description?: string;
 }
 
 export interface Favorite {
@@ -46,4 +135,28 @@ export interface ObjectItem {
   id: string;
   name: string;
   type: string;
+}
+
+export interface Interaction {
+  id: string;
+  post_id: string;
+  user_id: string;
+  action_type: 'RESPONSE' | 'CHAT' | 'MATCH' | 'COMMENT';
+  content: string;
+  created_at: string;
+  user?: User;
+}
+
+export type NotificationType = 'POST_EXPIRED' | 'NEW_MATCH' | 'NEW_CHAT';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  description: string;
+  timestamp: string;
+  is_read: boolean;
+  post_id?: string;
+  user_id?: string; // For chat notifications
+  data?: any; // Extra payload data
 }

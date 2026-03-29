@@ -3,9 +3,6 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color: #1a1a1a;
-  background-color: #f5f7fb;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -14,13 +11,18 @@
   --primary-color: #6366f1;
   --secondary-color: #a855f7;
   --accent-color: #ec4899;
-  --bg-color: #f5f7fb;
-  --card-bg: #ffffff;
-  --text-main: #1f2937;
-  --text-muted: #6b7280;
-  --border-color: #e5e7eb;
+  --bg-color: var(--wyt-bg-main);
+  --card-bg: var(--wyt-card-bg);
+  --text-main: var(--wyt-text-main);
+  --text-muted: #64748b;
+  --border-color: var(--wyt-border);
   --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --purple-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+}
+
+.dark {
+  --text-muted: #94a3b8;
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
 }
 
 * {
