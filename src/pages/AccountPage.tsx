@@ -4,7 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import Sidebar from '../components/Sidebar';
 import { getMe, updateProfile } from '../api/user';
 import { User } from '../api/types';
-import { removeToken } from '../utils/auth';
+import { getUserIdFromToken, removeToken, isAdmin } from '../utils/auth';
 import NotificationDropdown from '../components/NotificationDropdown';
 
 const AccountPage: React.FC = () => {
@@ -231,6 +231,15 @@ const AccountPage: React.FC = () => {
                   <p className="text-sm font-black text-gray-900 dark:text-gray-100 leading-none mb-1">{user?.full_name || user?.username}</p>
                   <p className="text-[10px] font-bold text-gray-400 truncate uppercase tracking-widest">{user?.email || 'User Account'}</p>
                 </div>
+                {isAdmin() && (
+                  <button 
+                    onClick={() => navigate('/admin')}
+                    className="w-full flex items-center gap-3 px-6 py-3 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all font-bold text-xs uppercase tracking-widest text-left"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    Admin Panel
+                  </button>
+                )}
                 <button 
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-6 py-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all font-bold text-xs uppercase tracking-widest text-left"

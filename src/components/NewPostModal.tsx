@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPost } from '../api/post';
-import { searchObjects } from '../api/object';
-import { ObjectItem } from '../api/types';
+import { searchObjects, getObjectRelations } from '../api/object';
+import { WytObject, ObjectRelation } from '../api/types';
 
 interface NewPostModalProps {
   onClose: () => void;
@@ -47,11 +47,11 @@ const NewPostModal: React.FC<NewPostModalProps> = ({ onClose, onSuccess }) => {
   });
 
   const [objectQuery, setObjectQuery] = useState('');
-  const [objectResults, setObjectResults] = useState<ObjectItem[]>([]);
+  const [objectResults, setObjectResults] = useState<WytObject[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  const [recommendedEntities, setRecommendedEntities] = useState<ObjectItem[]>([]);
+  const [recommendedEntities, setRecommendedEntities] = useState<WytObject[]>([]);
 
   useEffect(() => {
     const fetchRecommendations = async () => {
@@ -99,7 +99,8 @@ const NewPostModal: React.FC<NewPostModalProps> = ({ onClose, onSuccess }) => {
     
     let loc = text.includes('in ') ? text.split('in ')[1].split(' ')[0] : '';
 
-    let matchedObject: ObjectItem | null = null;
+    let matchedObject: WytObject | null = null;
+    let matchedWord = '';
     
     for (const word of potentialEntities) {
       try {
@@ -107,16 +108,34 @@ const NewPostModal: React.FC<NewPostModalProps> = ({ onClose, onSuccess }) => {
         if (searchData.items && searchData.items.length > 0) {
           const exactMatch = searchData.items.find(item => item.name.toLowerCase() === word);
           matchedObject = exactMatch || searchData.items[0];
-          if (matchedObject) break;
+          if (matchedObject) {
+            matchedWord = word.charAt(0).toUpperCase() + word.slice(1);
+            break;
+          }
         }
       } catch (error) {
         console.error('Failed to search entity:', error);
       }
     }
 
+    if (matchedObject) {
+      // Dynamic Recommendations based on relationships
+      try {
+        const relData = await getObjectRelations(matchedObject.id);
+        if (relData.items && relData.items.length > 0) {
+          const related = relData.items.map((r: ObjectRelation) => r.related_object).filter(Boolean);
+          if (related.length > 0) {
+            setRecommendedEntities(related as WytObject[]);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch relations for recommendations:', err);
+      }
+    }
+
     setSmartDetected({
       type,
-      entity: matchedObject ? matchedObject.name : (potentialEntities[0] ? potentialEntities[0].charAt(0).toUpperCase() + potentialEntities[0].slice(1) : ''),
+      entity: matchedWord || (potentialEntities[0] ? potentialEntities[0].charAt(0).toUpperCase() + potentialEntities[0].slice(1) : ''),
       location: loc ? loc.charAt(0).toUpperCase() + loc.slice(1) : '',
       matchedObjectId: matchedObject ? matchedObject.id : null
     });
@@ -138,7 +157,7 @@ const NewPostModal: React.FC<NewPostModalProps> = ({ onClose, onSuccess }) => {
     setSmartDetected(null);
   };
 
-  const handleApplyRecommended = (obj: ObjectItem) => {
+  const handleApplyRecommended = (obj: WytObject) => {
     setFormData({
       ...formData,
       object_id: obj.id,
@@ -434,21 +453,31 @@ const NewPostModal: React.FC<NewPostModalProps> = ({ onClose, onSuccess }) => {
                     background: 'white', borderRadius: '1.25rem', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', 
                     zIndex: 50, border: '1px solid #f1f5f9', marginTop: '0.5rem', overflow: 'hidden'
                   }}>
-                    {objectResults.map(obj => (
-                      <div 
-                        key={obj.id} 
-                        style={{ padding: '1rem 1.25rem', cursor: 'pointer', borderBottom: '1px solid #f8fafc', fontWeight: '600', fontSize: '0.875rem' }}
-                        onMouseDown={() => {
-                          setFormData({...formData, object_id: obj.id, object_name: obj.name});
-                          setObjectQuery(obj.name);
-                          setShowDropdown(false);
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        {obj.name}
-                      </div>
-                    ))}
+                    {objectResults.map(obj => {
+                      const lowerQuery = objectQuery.toLowerCase();
+                      const matchedAlias = obj.aliases?.find(a => a.alias.toLowerCase().includes(lowerQuery));
+                      const displayLabel = matchedAlias ? 
+                        `${matchedAlias.alias.charAt(0).toUpperCase() + matchedAlias.alias.slice(1)}` : 
+                        obj.name;
+                      const secondaryLabel = matchedAlias ? ` (${obj.name})` : '';
+
+                      return (
+                        <div 
+                          key={obj.id} 
+                          style={{ padding: '1rem 1.25rem', cursor: 'pointer', borderBottom: '1px solid #f8fafc', fontWeight: '600', fontSize: '0.875rem' }}
+                          onMouseDown={() => {
+                            setFormData({...formData, object_id: obj.id, object_name: displayLabel});
+                            setObjectQuery(displayLabel);
+                            setShowDropdown(false);
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <span style={{ color: '#1e293b' }}>{displayLabel}</span>
+                          {secondaryLabel && <span style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: '500', marginLeft: '0.5rem' }}>{secondaryLabel}</span>}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

@@ -8,6 +8,8 @@ import MyWytPost from './pages/MyWytPost';
 import Chat from './pages/Chat';
 import ProfilePage from './pages/ProfilePage';
 import AccountPage from './pages/AccountPage';
+import AdminDashboard from './pages/AdminDashboard';
+import AdminRoute from './components/AdminRoute';
 
 const App: React.FC = () => {
   return (
@@ -53,6 +55,14 @@ const App: React.FC = () => {
             <ProtectedRoute>
               <ProfilePage />
             </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin" 
+          element={
+            <AdminRoute>
+              <AdminDashboard />
+            </AdminRoute>
           } 
         />
       </Routes>

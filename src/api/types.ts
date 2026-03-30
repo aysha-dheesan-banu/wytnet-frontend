@@ -131,10 +131,48 @@ export interface Follow {
   following_id: string;
 }
 
+export interface ObjectAlias {
+  id: string;
+  object_id: string;
+  alias: string;
+}
+
+export interface ObjectType {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  is_active: boolean;
+}
+
+export interface WytObject {
+  id: string;
+  name: string;
+  category?: string;
+  description?: string;
+  icon?: string;
+  type_id?: string;
+  is_active: boolean;
+  normalized_name: string;
+  aliases?: ObjectAlias[];
+  type?: ObjectType;
+  child_count?: number;
+  parent_name?: string;
+}
+
+export interface ObjectRelation {
+  id: string;
+  object_id: string;
+  related_object_id: string;
+  relation_type: string;
+  related_object?: WytObject;
+}
+
+// Deprecated in favor of WytObject, but keeping for compatibility if needed
 export interface ObjectItem {
   id: string;
   name: string;
-  type: string;
+  type?: string;
 }
 
 export interface Interaction {
