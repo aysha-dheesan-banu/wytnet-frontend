@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import Logo from '../components/Logo';
 import { getInteractions, createInteraction } from '../api/interaction';
 import { getUserIdFromToken, removeToken } from '../utils/auth';
 import { getPosts } from '../api/post';
@@ -156,11 +157,8 @@ const Chat: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
       <header className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 bg-wyt-gradient rounded-full flex items-center justify-center cursor-pointer" onClick={() => navigate('/dashboard')}>
-            <span className="text-white font-bold text-xl">W</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-wyt-primary">WytNet</h1>
+        <div className="flex items-center cursor-pointer" onClick={() => navigate('/dashboard')}>
+          <Logo size="md" />
         </div>
         <div className="flex items-center gap-6">
           <button 

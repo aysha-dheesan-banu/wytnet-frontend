@@ -1,138 +1,434 @@
-import React, { useState, useEffect } from 'react';
-import { getObjects } from '../../api/object';
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getObjects, getObjectTypes } from '../../api/object';
 import { getAliasesForObject, createAlias, deleteAlias } from '../../api/admin';
-import { WytObject, ObjectAlias } from '../../api/types';
+import { WytObject } from '../../api/types';
+import ConfirmModal from './ConfirmModal';
 
-const AliasManager: React.FC = () => {
-  const [objects, setObjects] = useState<WytObject[]>([]);
-  const [selectedObjectId, setSelectedObjectId] = useState<string>('');
-  const [aliases, setAliases] = useState<ObjectAlias[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [newAlias, setNewAlias] = useState('');
+interface AliasManagerProps {
+  createTrigger: number;
+  onTriggerHandled?: () => void;
+}
 
-  useEffect(() => {
-    fetchObjects();
-  }, []);
+const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHandled }) => {
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState('All Types');
+  const [selectedObject, setSelectedObject] = useState<WytObject | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'view' | 'edit' | 'create'>('view');
+  const [rowValues, setRowValues] = useState<Record<string, string>>({});
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: '',
+    onConfirm: () => {}
+  });
+  const [newAliasName, setNewAliasName] = useState('');
+  const [tempSourceId, setTempSourceId] = useState('');
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (selectedObjectId) {
-      fetchAliases(selectedObjectId);
-    } else {
-      setAliases([]);
+  const { data: objRes, isLoading: loadingObjects } = useQuery({
+    queryKey: ['objects'],
+    queryFn: () => getObjects(0, 1000)
+  });
+  const objects = objRes?.items || [];
+
+  const { data: typeRes } = useQuery({
+    queryKey: ['types'],
+    queryFn: getObjectTypes
+  });
+  const types = typeRes?.items || [];
+
+  const { data: aliasRes, isLoading: loadingAliases } = useQuery({
+    queryKey: ['aliases', selectedObject?.id],
+    queryFn: () => getAliasesForObject(selectedObject!.id),
+    enabled: !!selectedObject
+  });
+  const aliases = aliasRes?.items || [];
+
+  // Sync rows when aliases change
+  React.useEffect(() => {
+    if (aliasRes?.items) {
+      const initialValues: Record<string, string> = {};
+      aliasRes.items.forEach(a => {
+        initialValues[a.id] = a.alias;
+      });
+      setRowValues(initialValues);
     }
-  }, [selectedObjectId]);
+  }, [aliasRes?.items]);
 
-  const fetchObjects = async () => {
-    try {
-      const res = await getObjects(0, 1000);
-      setObjects(res.items || []);
-    } catch (e) {
-      console.error(e);
+  // Watch for external create trigger
+  React.useEffect(() => {
+    if (createTrigger > 0) {
+      setModalMode('create');
+      setSelectedObject(null);
+      setTempSourceId('');
+      setNewAliasName('');
+      setIsModalOpen(true);
+      onTriggerHandled?.();
+    }
+  }, [createTrigger, onTriggerHandled]);
+
+  // Mutations
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, alias }: { id: string; alias: string }) => {
+      if (!selectedObject && modalMode !== 'create') throw new Error('No object selected');
+      // Atomic Re-sync: Delete old and create new with same object_id
+      await deleteAlias(id);
+      return await createAlias({ object_id: selectedObject?.id || tempSourceId, alias });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['aliases', selectedObject?.id || tempSourceId] });
+      queryClient.invalidateQueries({ queryKey: ['objects'] });
+    },
+    onError: () => {
+      alert('Error synchronizing alias');
+    }
+  });
+
+  const registerMutation = useMutation({
+    mutationFn: (data: { object_id: string; alias: string }) => createAlias(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['aliases', tempSourceId] });
+      queryClient.invalidateQueries({ queryKey: ['objects'] });
+      setNewAliasName('');
+      setIsModalOpen(false);
+    },
+    onError: () => {
+      alert('Error registering alias');
+    }
+  });
+
+
+  const clearAllAliasesMutation = useMutation({
+    mutationFn: async (aliases: { id: string }[]) => {
+      return Promise.all(aliases.map(a => deleteAlias(a.id)));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['objects'] });
+      setConfirmState(prev => ({ ...prev, isOpen: false }));
+    },
+    onError: () => {
+      alert('Error clearing aliases');
+    }
+  });
+
+  const handleClearAllAliases = (obj: WytObject) => {
+    if (!obj.aliases || obj.aliases.length === 0) {
+       alert('No aliases to clear for this object.');
+       return;
+    }
+    setConfirmState({
+      isOpen: true,
+      title: 'Clear All Aliases?',
+      message: `Are you sure you want to delete ALL aliases for "${obj.name}"? The object itself will remain intact.`,
+      confirmText: 'Yes, Clear All',
+      onConfirm: () => clearAllAliasesMutation.mutate(obj.aliases!)
+    });
+  };
+
+  const handleRowUpdate = (id: string) => {
+    const val = rowValues[id]?.trim();
+    if (!val) return;
+    updateMutation.mutate({ id, alias: val });
+  };
+
+  const handleRowValueChange = (id: string, val: string) => {
+    setRowValues(prev => ({ ...prev, [id]: val }));
+  };
+
+
+  const renderIcon = (iconStr: string | undefined, className = "text-xl") => {
+    const icon = (iconStr || '').trim();
+    if (icon.startsWith('http') || icon.startsWith('/uploads/')) {
+      const src = icon.startsWith('http') ? icon : `http://localhost:8000${icon}`;
+      return (
+        <img 
+          src={src} 
+          alt="" 
+          className="w-8 h-8 object-contain rounded-lg" 
+          onError={(e) => {
+            e.currentTarget.style.display = 'none';
+            const fallback = document.createElement('span');
+            fallback.className = `material-icons ${className} text-indigo-500`;
+            fallback.innerText = 'category';
+            e.currentTarget.parentElement?.appendChild(fallback);
+          }}
+        />
+      );
+    }
+    const iconName = (!icon || icon.length < 3 || ['string', 'icon', 'none', 'null'].includes(icon.toLowerCase())) 
+      ? 'category' 
+      : icon;
+    return <span className={`material-icons ${className} text-indigo-500`}>{iconName}</span>;
+  };
+
+  const handleOpenManager = (obj: WytObject, mode: 'view' | 'edit' = 'view') => {
+    setSelectedObject(obj);
+    setModalMode(mode);
+    setIsModalOpen(true);
+    if (mode === 'edit') {
+      setTimeout(() => inputRef.current?.focus(), 300);
     }
   };
 
-  const fetchAliases = async (id: string) => {
-    setLoading(true);
-    try {
-      const res = await getAliasesForObject(id);
-      setAliases(res.items || []);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const filteredObjects = objects.filter(o => {
+    const matchesSearch = o.name.toLowerCase().includes(search.toLowerCase());
+    const matchesType = filterType === 'All Types' || types.find(t => t.id === o.type_id)?.name === filterType;
+    return matchesSearch && matchesType;
+  });
 
-  const handleAddAlias = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedObjectId || !newAlias.trim()) return;
-    try {
-      await createAlias({ object_id: selectedObjectId, alias: newAlias.trim() });
-      setNewAlias('');
-      fetchAliases(selectedObjectId);
-    } catch (e) {
-      alert('Error adding alias');
-    }
-  };
+  const totalAliases = objects.reduce((acc, o) => acc + (o.aliases?.length || 0), 0);
+  const entitiesWithAliases = objects.filter(o => (o.aliases?.length || 0) > 0).length;
 
-  const handleDeleteAlias = async (aliasId: string) => {
-    try {
-      await deleteAlias(aliasId);
-      fetchAliases(selectedObjectId);
-    } catch (e) {
-      alert('Error deleting alias');
-    }
-  };
+  const stats = [
+    { label: 'Total Aliases', value: totalAliases, icon: 'label' },
+    { label: 'Entities with Aliases', value: entitiesWithAliases, icon: 'inventory' },
+    { label: 'All Types', value: types.length, icon: 'category' }
+  ];
 
   return (
     <div className="p-8">
-      <div className="max-w-2xl mx-auto">
-        <div className="mb-10">
-          <label className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3 ml-1">Select Object to Manage</label>
-          <select 
-            value={selectedObjectId}
-            onChange={(e) => setSelectedObjectId(e.target.value)}
-            className="w-full px-6 py-4 bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-[1.5rem] text-sm focus:ring-4 focus:ring-wyt-primary/10 outline-none transition-all dark:text-white appearance-none cursor-pointer font-bold uppercase tracking-tight"
-          >
-            <option value="">-- Choose an Object --</option>
-            {objects.map(obj => (
-              <option key={obj.id} value={obj.id}>{obj.name} {obj.category ? `(${obj.category})` : ''}</option>
-            ))}
-          </select>
+      {/* Stats Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {stats.map((stat, i) => (
+          <div key={i} className="p-6 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-3xl shadow-sm hover:shadow-md transition-all">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">{stat.label}</p>
+            <div className="flex items-end justify-between">
+              <h3 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter">{stat.value}</h3>
+              <div className="w-10 h-10 bg-gray-50 dark:bg-slate-900 rounded-xl flex items-center justify-center text-gray-400">
+                <span className="material-icons">{stat.icon}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter Bar */}
+      <div className="flex flex-wrap items-center gap-3 mb-6 bg-gray-50/50 dark:bg-slate-900/30 p-2 rounded-2xl border border-gray-100 dark:border-slate-800">
+        <div className="relative flex-1 min-w-[200px]">
+          <input 
+            type="text" 
+            placeholder="Search objects by name..." 
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-sm focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all dark:text-white"
+          />
+          <span className="material-icons absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">search</span>
         </div>
+        
+        <select 
+          value={filterType}
+          onChange={(e) => setFilterType(e.target.value)}
+          style={{ appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none' }}
+          className="px-6 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-bold uppercase tracking-widest text-gray-500 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all text-center"
+        >
+          <option>All Types</option>
+          {types.map(t => <option key={t.id}>{t.name}</option>)}
+        </select>
+      </div>
 
-        {selectedObjectId ? (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-6 flex items-center gap-3">
-               Aliases for <span className="text-wyt-primary">{objects.find(o => o.id === selectedObjectId)?.name}</span>
-            </h3>
+      {/* Table Section */}
+      <div className="overflow-x-auto rounded-[2rem] border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-800 shadow-sm">
+        <table className="w-full text-left font-sans">
+          <thead className="bg-gray-50 dark:bg-slate-900 border-b border-gray-100 dark:border-slate-700">
+            <tr>
+              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest w-24">Icon</th>
+              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Object Name</th>
+              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Type</th>
+              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Aliases</th>
+              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50 dark:divide-slate-700/50">
+            {loadingObjects ? (
+               <tr><td colSpan={5} className="px-6 py-20 text-center">
+                <div className="flex flex-col items-center gap-3">
+                   <div className="w-8 h-8 border-4 border-indigo-50/50 border-t-indigo-600 rounded-full animate-spin"></div>
+                   <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Loading Objects...</span>
+                </div>
+              </td></tr>
+            ) : filteredObjects.length === 0 ? (
+              <tr><td colSpan={5} className="px-6 py-20 text-center text-gray-400 uppercase text-[10px] font-bold tracking-widest italic">No objects found</td></tr>
+            ) : (
+              filteredObjects.map(obj => (
+                <tr key={obj.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/20 transition-all group">
+                  <td className="px-6 py-4">
+                    <div className="w-12 h-12 bg-gray-50 dark:bg-slate-900 rounded-2xl flex items-center justify-center text-gray-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors overflow-hidden">
+                      {renderIcon(obj.icon)}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div>
+                      <div className="text-sm font-black text-gray-900 dark:text-white tracking-tight uppercase">{obj.name}</div>
+                      <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-0.5">
+                        {types.find(t => t.id === obj.type_id)?.name || obj.category || 'General'}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                     <span className="px-3 py-1 bg-gray-50 dark:bg-slate-900 text-gray-500 rounded-lg text-[9px] font-black uppercase tracking-widest border border-gray-100 dark:border-slate-700">
+                        {types.find(t => t.id === obj.type_id)?.name || 'Default'}
+                     </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-sm font-black text-gray-900 dark:text-white ml-0.5">
+                      {obj.aliases?.length || 0}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button 
+                        onClick={() => handleOpenManager(obj, 'view')}
+                        className="p-3 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-all active:scale-90"
+                        title="View Aliases"
+                      >
+                        <span className="material-icons text-lg">visibility</span>
+                      </button>
+                      <button 
+                        onClick={() => handleOpenManager(obj, 'edit')}
+                        className="p-3 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-all active:scale-90"
+                        title="Edit Aliases"
+                      >
+                        <span className="material-icons text-lg">edit</span>
+                      </button>
+                      <button 
+                        onClick={() => handleClearAllAliases(obj)}
+                        className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50/50 dark:hover:bg-red-900/20 rounded-xl transition-all active:scale-90"
+                        title="Clear All Aliases"
+                      >
+                        <span className="material-icons text-lg">delete</span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
-            <form onSubmit={handleAddAlias} className="flex gap-2 mb-8">
-              <input 
-                type="text" 
-                value={newAlias}
-                onChange={(e) => setNewAlias(e.target.value)}
-                placeholder="Enter new alias..."
-                className="flex-1 px-6 py-4 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-4 focus:ring-wyt-primary/10 outline-none transition-all dark:text-white font-medium shadow-sm"
-              />
-              <button 
-                type="submit"
-                disabled={!newAlias.trim()}
-                className="px-8 py-4 bg-wyt-primary text-white rounded-2xl font-bold text-xs uppercase tracking-widest transition-all hover:shadow-lg hover:shadow-indigo-200 dark:hover:shadow-none active:scale-95 disabled:opacity-50 disabled:active:scale-100"
-              >
-                Add
+      {/* Management Modal */}
+      {isModalOpen && (selectedObject || modalMode === 'create') && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md" onClick={() => setIsModalOpen(false)}></div>
+          <div className="relative w-full max-w-2xl bg-white dark:bg-slate-800 rounded-[3rem] shadow-2xl p-12 border border-gray-100 dark:border-slate-700 animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-start mb-10">
+              <div>
+                <h3 className="text-3xl font-black text-gray-900 dark:text-white uppercase tracking-tighter">
+                  {modalMode === 'create' ? 'Create New Alias' : 'MANAGE ALIASES'}
+                </h3>
+                <p className="text-gray-400 font-medium mt-1">
+                  {modalMode === 'create' ? 'Create a new alias for your knowledge graph' : 'Configuring aliases for'}{' '}
+                  <span className="text-indigo-600 font-bold">{selectedObject?.name}</span>
+                </p>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="w-12 h-12 rounded-full bg-gray-50 dark:bg-slate-900 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors">
+                <span className="material-icons">close</span>
               </button>
-            </form>
+            </div>
 
-            <div className="space-y-2">
-              {loading ? (
-                <div className="text-center py-10 text-gray-400 italic">Fetching aliases...</div>
-              ) : aliases.length === 0 ? (
-                <div className="bg-gray-50 dark:bg-slate-900/50 rounded-2xl p-8 text-center text-gray-400 font-medium border-2 border-dashed border-gray-100 dark:border-slate-800">
-                  No aliases found for this object.
+            {/* Global Creation Fields */}
+            {modalMode === 'create' && (
+              <div className="bg-gray-50/50 dark:bg-slate-900/50 p-8 rounded-[2.5rem] mb-8 border border-gray-100 dark:border-slate-800 flex-shrink-0 animate-in fade-in slide-in-from-top-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2.5 ml-1 text-center">Select Object</label>
+                    <select 
+                      value={tempSourceId}
+                      onChange={(e) => setTempSourceId(e.target.value)}
+                      style={{ appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none' }}
+                      className="w-full px-5 py-4 bg-white dark:bg-slate-800 border-2 border-transparent focus:border-indigo-500/20 rounded-2xl text-sm font-bold outline-none transition-all dark:text-white text-center"
+                    >
+                      <option value="">Select Object</option>
+                      {objects.map(obj => (
+                        <option key={obj.id} value={obj.id}>{obj.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2.5 ml-1 text-center">Add Alias</label>
+                    <input 
+                      type="text"
+                      placeholder="e.g. Laptop, Portable Computer"
+                      value={newAliasName}
+                      onChange={(e) => setNewAliasName(e.target.value)}
+                      className="w-full px-5 py-4 bg-white dark:bg-slate-800 border-2 border-transparent focus:border-indigo-500/20 rounded-2xl text-sm font-bold outline-none transition-all dark:text-white text-center"
+                    />
+                  </div>
+                </div>
+                <button 
+                  onClick={() => registerMutation.mutate({ object_id: tempSourceId, alias: newAliasName })}
+                  disabled={!tempSourceId || !newAliasName || registerMutation.isPending}
+                  className="w-full py-5 bg-indigo-600 text-white rounded-[1.5rem] font-black text-[12px] uppercase tracking-[0.2em] transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-50"
+                >
+                  {registerMutation.isPending ? 'Syncing...' : 'Create Alias'}
+                </button>
+              </div>
+            )}
+
+            {/* List with Inline Updating Rows */}
+            <div className="flex flex-col gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+              {loadingAliases ? (
+                <div className="py-20 text-center">
+                   <div className="w-8 h-8 border-4 border-indigo-50/50 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4"></div>
+                   <span className="text-gray-400 font-black uppercase text-[10px] tracking-widest">Querying Records...</span>
                 </div>
               ) : (
-                aliases.map(alias => (
-                  <div key={alias.id} className="flex items-center justify-between bg-white dark:bg-slate-900 px-6 py-4 rounded-2xl border border-gray-50 dark:border-slate-800 group hover:border-wyt-primary/20 transition-all shadow-sm">
-                    <span className="font-bold text-gray-700 dark:text-gray-200 uppercase tracking-tight">{alias.alias}</span>
-                    <button 
-                      onClick={() => handleDeleteAlias(alias.id)}
-                      className="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                    >
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </button>
-                  </div>
-                ))
+                <>
+                  {[...aliases].sort((a, b) => a.alias.localeCompare(b.alias)).map(alias => (
+                    <div key={alias.id} className="flex items-center gap-4 bg-white dark:bg-slate-900 px-8 py-5 rounded-[2.5rem] border border-gray-100 dark:border-slate-800 transition-all shadow-sm">
+                      <div className="flex-1">
+                        <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-4">Current Entry</label>
+                        <input 
+                          type="text"
+                          value={rowValues[alias.id] || ''}
+                          onChange={(e) => handleRowValueChange(alias.id, e.target.value)}
+                          className="w-full px-5 py-3 bg-gray-50/50 dark:bg-slate-800/50 rounded-2xl text-xs font-bold outline-none border border-transparent focus:border-indigo-500/20 dark:text-white transition-all"
+                          readOnly={modalMode === 'view'}
+                        />
+                      </div>
+                      {modalMode === 'edit' && (
+                        <button 
+                          onClick={() => handleRowUpdate(alias.id)}
+                          disabled={updateMutation.isPending && updateMutation.variables?.id === alias.id}
+                          className="px-8 py-3.5 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-50"
+                        >
+                          {updateMutation.isPending && updateMutation.variables?.id === alias.id ? '...' : 'Update'}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+
+                  {aliases.length === 0 && modalMode === 'view' && (
+                    <div className="bg-gray-50/50 dark:bg-slate-900/50 rounded-[2.5rem] p-16 text-center border-2 border-dashed border-gray-100 dark:border-slate-800">
+                      <p className="text-gray-400 font-black uppercase tracking-widest text-[10px]">No linked records found</p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
-        ) : (
-          <div className="py-20 text-center text-gray-400 border-2 border-dashed border-gray-100 dark:border-slate-800 rounded-[2rem]">
-            <svg className="h-12 w-12 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            <p className="font-bold uppercase tracking-widest text-[10px]">Select an object above to manage its aliases</p>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
+      {/* Branded Confirmation Modal */}
+      <ConfirmModal 
+        isOpen={confirmState.isOpen}
+        onClose={() => setConfirmState({ ...confirmState, isOpen: false })}
+        onConfirm={confirmState.onConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        isDestructive={true}
+      />
     </div>
   );
 };

@@ -1,14 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   getObjects, createObject, updateObject, deleteObject, getObjectTypes,
   uploadObjectIcon 
 } from '../../api/object';
-import { WytObject, ObjectType } from '../../api/types';
+import { WytObject } from '../../api/types';
+import ConfirmModal from './ConfirmModal';
 
-const ObjectManager: React.FC = () => {
-  const [objects, setObjects] = useState<WytObject[]>([]);
-  const [types, setTypes] = useState<ObjectType[]>([]);
-  const [loading, setLoading] = useState(true);
+interface ObjectManagerProps {
+  createTrigger: number;
+  onTriggerHandled?: () => void;
+}
+
+const ObjectManager: React.FC<ObjectManagerProps> = ({ createTrigger, onTriggerHandled }) => {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingObject, setEditingObject] = useState<WytObject | null>(null);
@@ -18,42 +23,83 @@ const ObjectManager: React.FC = () => {
     type_id: '',
     icon: 'category'
   });
+  const [filterType, setFilterType] = useState('All Types');
+  const [filterStatus, setFilterStatus] = useState('Active');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [viewingObject, setViewingObject] = useState<WytObject | null>(null);
+  const [confirmDeleteState, setConfirmDeleteState] = useState<{ isOpen: boolean; id: string | null; name: string }>({
+    isOpen: false,
+    id: null,
+    name: ''
+  });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [objRes, typeRes] = await Promise.all([
-        getObjects(0, 100),
-        getObjectTypes()
-      ]);
-      setObjects(objRes.items || []);
-      setTypes(typeRes.items || []);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+  // Watch for external create trigger
+  React.useEffect(() => {
+    if (createTrigger > 0) {
+      setEditingObject(null);
+      setFormData({ name: '', description: '', type_id: '', icon: 'category' });
+      setIsModalOpen(true);
+      onTriggerHandled?.();
     }
-  };
+  }, [createTrigger, onTriggerHandled]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
+  // Queries
+  const { data: objRes, isLoading: loadingObjects } = useQuery({
+    queryKey: ['objects'],
+    queryFn: () => getObjects(0, 100)
+  });
+  const objects = objRes?.items || [];
+
+  const { data: typeRes, isLoading: loadingTypes } = useQuery({
+    queryKey: ['types'],
+    queryFn: getObjectTypes
+  });
+  const types = typeRes?.items || [];
+
+  const loading = loadingObjects || loadingTypes;
+
+  // Mutations
+  const saveMutation = useMutation({
+    mutationFn: async (payload: any) => {
       if (editingObject) {
-        await updateObject(editingObject.id, formData);
-      } else {
-        await createObject(formData);
+        return updateObject(editingObject.id, payload);
       }
+      return createObject(payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['objects'] });
       setIsModalOpen(false);
       setEditingObject(null);
       setFormData({ name: '', description: '', type_id: '', icon: 'category' });
-      fetchData();
-    } catch (e) {
-      alert('Error saving object');
+    },
+    onError: (err: any) => {
+      console.error('Save error:', err);
+      const detail = err.response?.data?.detail;
+      const message = typeof detail === 'string' 
+        ? detail 
+        : (Array.isArray(detail) ? detail[0]?.msg : 'Error saving object');
+      alert(message || 'Error saving object');
     }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteObject,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['objects'] });
+    },
+    onError: () => {
+      alert('Error deleting object');
+    }
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      ...formData,
+      type_id: formData.type_id || null,
+    };
+    saveMutation.mutate(payload);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,7 +107,7 @@ const ObjectManager: React.FC = () => {
     if (!file) return;
     
     try {
-      setLoading(true);
+      setIsUploading(true);
       const res = await uploadObjectIcon(file);
       if (res.item) {
         setFormData(prev => ({ ...prev, icon: res.item! }));
@@ -69,14 +115,12 @@ const ObjectManager: React.FC = () => {
     } catch (err) {
       alert('Failed to upload icon');
     } finally {
-      setLoading(false);
+      setIsUploading(false);
     }
   };
 
   const renderIcon = (iconStr: string | undefined, className = "text-xl") => {
     const icon = (iconStr || '').trim();
-    
-    // 1. If it starts with http or /uploads/, it's a real image URL
     if (icon.startsWith('http') || icon.startsWith('/uploads/')) {
       const src = icon.startsWith('http') ? icon : `http://localhost:8000${icon}`;
       return (
@@ -85,7 +129,6 @@ const ObjectManager: React.FC = () => {
           alt="" 
           className="w-8 h-8 object-contain rounded-lg" 
           onError={(e) => {
-            // Hide the broken image and show the triangle icon instead
             e.currentTarget.style.display = 'none';
             const fallback = document.createElement('span');
             fallback.className = `material-icons ${className} text-indigo-500`;
@@ -95,16 +138,14 @@ const ObjectManager: React.FC = () => {
         />
       );
     }
-    
-    // 2. Otherwise, treat it as a Material Icon name (default to 'category' if name is junk)
     const iconName = (!icon || icon.length < 3 || ['string', 'icon', 'none', 'null'].includes(icon.toLowerCase())) 
       ? 'category' 
       : icon;
-      
     return <span className={`material-icons ${className} text-indigo-500`}>{iconName}</span>;
   };
 
   const handleEdit = (obj: WytObject) => {
+    setIsViewModalOpen(false);
     setEditingObject(obj);
     setFormData({
       name: obj.name,
@@ -115,21 +156,49 @@ const ObjectManager: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this object?')) {
-      try {
-        await deleteObject(id);
-        fetchData();
-      } catch (e) {
-        alert('Error deleting object');
-      }
+  const handleView = (obj: WytObject) => {
+    setViewingObject(obj);
+    setIsViewModalOpen(true);
+  };
+
+  const handleDelete = (id: string, name: string) => {
+    setConfirmDeleteState({ isOpen: true, id, name });
+  };
+
+  const handleConfirmDelete = () => {
+    if (confirmDeleteState.id) {
+      deleteMutation.mutate(confirmDeleteState.id);
     }
   };
 
-  const filteredObjects = objects.filter(o => 
-    o.name.toLowerCase().includes(search.toLowerCase()) || 
-    o.normalized_name.toLowerCase().includes(search.toLowerCase())
-  );
+  const getEffectiveParents = (obj: WytObject) => {
+    return obj.parent_names && obj.parent_names.length > 0 
+      ? obj.parent_names 
+      : (obj.parent_name ? obj.parent_name.split(',').map(s => s.trim()) : ['Main']);
+  };
+
+  const renderParents = (obj: WytObject) => {
+    const rawParents = getEffectiveParents(obj);
+    const count = (rawParents.length === 1 && rawParents[0].toLowerCase() === 'main') ? 0 : rawParents.length;
+    
+    return (
+      <div className="text-sm font-black text-gray-900 dark:text-white ml-0.5">
+        {count}
+      </div>
+    );
+  };
+
+  const filteredObjects = objects.filter(o => {
+    const matchesSearch = o.name.toLowerCase().includes(search.toLowerCase()) || 
+                         o.normalized_name.toLowerCase().includes(search.toLowerCase());
+    
+    const matchesType = filterType === 'All Types' || 
+                       types.find(t => t.id === o.type_id)?.name === filterType;
+    
+    const matchesStatus = filterStatus === 'Active' ? o.is_active : !o.is_active;
+    
+    return matchesSearch && matchesType && matchesStatus;
+  });
 
   const stats = [
     { label: 'Total Objects', value: objects.length, icon: 'inventory_2' },
@@ -140,26 +209,6 @@ const ObjectManager: React.FC = () => {
 
   return (
     <div className="p-8">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-3">
-            <span className="p-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-2xl">
-              <span className="material-icons text-2xl">bubble_chart</span>
-            </span>
-            Objects Management
-          </h2>
-          <p className="text-gray-500 font-medium mt-1 ml-14">Manage objects and knowledge graph structure</p>
-        </div>
-        <button 
-          onClick={() => { setEditingObject(null); setFormData({ name: '', description: '', type_id: '', icon: 'category' }); setIsModalOpen(true); }}
-          className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest transition-all hover:bg-indigo-700 hover:-translate-y-0.5 active:scale-95 shadow-xl shadow-indigo-100 dark:shadow-none"
-        >
-          <span className="material-icons text-sm">add</span>
-          Create Object
-        </button>
-      </div>
-
       {/* Stats Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {stats.map((stat, i) => (
@@ -188,12 +237,22 @@ const ObjectManager: React.FC = () => {
           <span className="material-icons absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">search</span>
         </div>
         
-        <select className="px-4 py-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-bold uppercase tracking-widest text-gray-500 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all">
+        <select 
+          value={filterType}
+          onChange={(e) => setFilterType(e.target.value)}
+          style={{ appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none' }}
+          className="px-4 py-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-bold uppercase tracking-widest text-gray-500 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all"
+        >
           <option>All Types</option>
           {types.map(t => <option key={t.id}>{t.name}</option>)}
         </select>
 
-        <select className="px-4 py-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-bold uppercase tracking-widest text-gray-500 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all">
+        <select 
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          style={{ appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none' }}
+          className="px-4 py-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-bold uppercase tracking-widest text-gray-500 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all"
+        >
           <option>Active</option>
           <option>Inactive</option>
         </select>
@@ -211,10 +270,10 @@ const ObjectManager: React.FC = () => {
             <tr>
               <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Object Icon</th>
               <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Object Name</th>
-              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Aliases (count)</th>
+              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Aliases</th>
               <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Type</th>
-              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Parent</th>
-              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Childs (count)</th>
+              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Parents</th>
+              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Childs</th>
               <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
             </tr>
           </thead>
@@ -243,11 +302,9 @@ const ObjectManager: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                       <span className="w-6 h-6 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 flex items-center justify-center text-[10px] font-black">
-                         {obj.aliases?.length || 0}
-                       </span>
-                    </div>
+                    <span className="text-sm font-black text-gray-900 dark:text-white ml-0.5">
+                      {obj.aliases?.length || 0}
+                    </span>
                   </td>
                   <td className="px-6 py-4">
                     <span className="px-3 py-1 bg-gray-100 dark:bg-slate-900 text-gray-600 dark:text-gray-400 rounded-lg text-[10px] font-black uppercase tracking-widest border border-gray-200 dark:border-slate-700">
@@ -255,17 +312,24 @@ const ObjectManager: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="text-xs font-bold text-gray-500 uppercase tracking-tighter">{obj.parent_name || 'Main'}</span>
+                    {renderParents(obj)}
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-sm font-black text-gray-900 dark:text-white">{obj.child_count || 0}</span>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2 pr-2">
+                      <button onClick={() => handleView(obj)} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-slate-900 rounded-xl transition-all shadow-none hover:shadow-lg shadow-indigo-100">
+                        <span className="material-icons text-lg">visibility</span>
+                      </button>
                       <button onClick={() => handleEdit(obj)} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-slate-900 rounded-xl transition-all shadow-none hover:shadow-lg shadow-indigo-100">
                         <span className="material-icons text-lg">edit</span>
                       </button>
-                      <button onClick={() => handleDelete(obj.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-white dark:hover:bg-slate-900 rounded-xl transition-all shadow-none hover:shadow-lg shadow-red-100">
+                      <button 
+                        onClick={() => handleDelete(obj.id, obj.name)}
+                        className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50/50 dark:hover:bg-red-900/20 rounded-xl transition-all active:scale-90"
+                        title="Full Entity Delete"
+                      >
                         <span className="material-icons text-lg">delete</span>
                       </button>
                     </div>
@@ -314,6 +378,7 @@ const ObjectManager: React.FC = () => {
                   <select 
                     value={formData.type_id}
                     onChange={(e) => setFormData({...formData, type_id: e.target.value})}
+                    style={{ appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none' }}
                     className="w-full px-6 py-4 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500/20 focus:bg-white rounded-2xl text-sm font-bold outline-none transition-all dark:text-white"
                   >
                     <option value="">Default Unit</option>
@@ -337,10 +402,10 @@ const ObjectManager: React.FC = () => {
                         placeholder="Material Icon name or URL"
                         className="w-full px-4 py-2 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500/20 focus:bg-white rounded-xl text-xs font-bold outline-none transition-all dark:text-white"
                       />
-                      <label className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-lg text-[10px] font-black uppercase cursor-pointer hover:bg-indigo-100 transition-colors">
-                        <span className="material-icons text-xs">upload</span>
-                        Upload Image
-                        <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
+                      <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-colors ${isUploading ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 cursor-pointer hover:bg-indigo-100'}`}>
+                        <span className={`material-icons text-xs ${isUploading ? 'animate-spin' : ''}`}>{isUploading ? 'sync' : 'upload'}</span>
+                        {isUploading ? 'Uploading...' : 'Upload Image'}
+                        <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} disabled={isUploading} />
                       </label>
                     </div>
                   </div>
@@ -372,6 +437,104 @@ const ObjectManager: React.FC = () => {
           </div>
         </div>
       )}
+
+      {isViewModalOpen && viewingObject && (() => {
+        const modalParents = getEffectiveParents(viewingObject).filter(n => n.toLowerCase() !== 'main');
+        const modalParentCount = modalParents.length;
+        
+        // Discover children from the existing catalog
+        const modalChildren = objects.filter(o => {
+          const parents = getEffectiveParents(o);
+          return parents.some(p => p.toLowerCase() === viewingObject.name.toLowerCase() || p === viewingObject.id);
+        });
+
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md" onClick={() => setIsViewModalOpen(false)}></div>
+            <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[3rem] shadow-2xl p-12 border border-gray-100 dark:border-slate-800 animate-in fade-in zoom-in duration-200 overflow-hidden">
+              
+              <div className="flex justify-between items-center mb-12">
+                <div className="flex items-center gap-6">
+                  <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-950 rounded-2xl flex items-center justify-center text-indigo-600">
+                    {renderIcon(viewingObject.icon, "text-3xl")}
+                  </div>
+                  <div>
+                    <h3 className="text-3xl font-black text-gray-900 dark:text-white uppercase tracking-tight">
+                      {viewingObject.name}
+                    </h3>
+                    <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+                      {types.find(t => t.id === viewingObject.type_id)?.name || 'Default Type'}
+                    </span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsViewModalOpen(false)} 
+                  className="w-12 h-12 rounded-full bg-gray-50 dark:bg-slate-800 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
+                >
+                   <span className="material-icons">close</span>
+                </button>
+              </div>
+
+              <div className="space-y-8">
+                <div>
+                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Description</label>
+                  <div className="p-6 bg-gray-50/50 dark:bg-slate-800/30 rounded-2xl border border-gray-100 dark:border-slate-800 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                    {viewingObject.description || 'No description available for this record.'}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Parent Nodes</label>
+                    <div className="flex flex-wrap gap-2">
+                      {modalParentCount > 0 ? modalParents.map((p, i) => (
+                        <span key={i} className="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-bold uppercase tracking-tight">
+                          {p}
+                        </span>
+                      )) : <span className="px-3 py-1 bg-gray-50 dark:bg-slate-800 text-gray-400 rounded-lg text-[10px] font-bold uppercase tracking-widest">Main Root</span>}
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Child Nodes</label>
+                    <div className="flex flex-wrap gap-2">
+                      {modalChildren.length > 0 ? modalChildren.map((c, i) => (
+                        <span key={i} className="px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-lg text-[10px] font-bold uppercase tracking-tight">
+                          {c.name}
+                        </span>
+                      )) : <span className="text-[10px] text-gray-400 italic">No downstream connections</span>}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-gray-100 dark:border-slate-800">
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1 p-4 bg-gray-50/50 dark:bg-slate-800/30 rounded-2xl">
+                      <span className="block text-[8px] font-black text-gray-400 uppercase mb-1">Total Children</span>
+                      <span className="text-xl font-black text-gray-900 dark:text-white">{viewingObject.child_count || 0}</span>
+                    </div>
+                    <div className="flex-1 p-4 bg-gray-50/50 dark:bg-slate-800/30 rounded-2xl">
+                      <span className="block text-[8px] font-black text-gray-400 uppercase mb-1">Parent Count</span>
+                      <span className="text-xl font-black text-gray-900 dark:text-white">
+                        {modalParentCount}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      {/* Custom Confirmation Modal */}
+      <ConfirmModal 
+        isOpen={confirmDeleteState.isOpen}
+        onClose={() => setConfirmDeleteState({ ...confirmDeleteState, isOpen: false })}
+        onConfirm={handleConfirmDelete}
+        title="Full Entity Delete?"
+        message={`Are you sure you want to permanently delete "${confirmDeleteState.name}"? This action cannot be undone and will remove all associated aliases and relations.`}
+        confirmText="Yes, Delete Object"
+        isDestructive={true}
+      />
     </div>
   );
 };

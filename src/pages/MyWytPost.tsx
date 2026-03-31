@@ -1,14 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import Logo from '../components/Logo';
 import Sidebar from '../components/Sidebar';
 import RightBar from '../components/RightBar';
+import PostSkeleton from '../components/PostSkeleton';
 import { getPosts, deletePost } from '../api/post';
+import { getUserById, getMe } from '../api/user';
+import { getWishlist } from '../api/wishlist';
+import { getEducation } from '../api/education';
+import { getWorks } from '../api/work';
+import { getSocials } from '../api/socials';
+import { getInterests } from '../api/interests';
+import { calculateProfileCompletion } from '../utils/profileUtils';
 import EditPostModal from '../components/EditPostModal';
+import ViewPostModal from '../components/ViewPostModal';
 import NotificationDropdown from '../components/NotificationDropdown';
 import { getInteractions } from '../api/interaction';
-import { getUserIdFromToken, removeToken, isAdmin } from '../utils/auth';
-import { getUserById } from '../api/user';
-import { Post, Interaction, User } from '../api/types';
+import { removeToken, isAdmin } from '../utils/auth';
+import { Post, User, Interaction, WishlistItem, Education, Work, Social, Interest } from '../api/types';
 import { useTheme } from '../context/ThemeContext';
 
 const formatTimeAgo = (dateString: string) => {
@@ -22,8 +31,8 @@ const formatTimeAgo = (dateString: string) => {
   if (diffInMinutes < 1) return 'Just now';
   if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
   if (diffInHours < 24) {
-     if (date.getDate() === now.getDate()) return 'Today';
-     return `${diffInHours}h ago`;
+    if (date.getDate() === now.getDate()) return 'Today';
+    return `${diffInHours}h ago`;
   }
   if (date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate() - 1) return 'Yesterday';
   return `${diffInDays}d ago`;
@@ -31,22 +40,22 @@ const formatTimeAgo = (dateString: string) => {
 
 const ConfirmationModal: React.FC<{ onClose: () => void, onConfirm: () => void }> = ({ onClose, onConfirm }) => (
   <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-     <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-md p-8 transform transition-all animate-in fade-in zoom-in duration-200">
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Complete this requirement?</h2>
-        <p className="text-sm text-gray-500 mb-8 leading-relaxed">
-          This will mark the requirement as completed and move it to your history. Other users will no longer be able to see it.
-        </p>
-        <div className="flex justify-end gap-3">
-           <button 
-            onClick={onClose}
-            className="px-6 py-2.5 rounded-xl border border-gray-100 text-sm font-bold text-gray-400 hover:bg-gray-50 transition-colors"
-           >Cancel</button>
-           <button 
-            onClick={onConfirm}
-            className="px-6 py-2.5 rounded-xl bg-[#00A389] text-white text-sm font-bold hover:bg-[#008F78] transition-colors shadow-lg shadow-emerald-100"
-           >Yes, Complete it</button>
-        </div>
-     </div>
+    <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-md p-8 transform transition-all animate-in fade-in zoom-in duration-200">
+      <h2 className="text-xl font-bold text-gray-900 mb-2">Complete this requirement?</h2>
+      <p className="text-sm text-gray-500 mb-8 leading-relaxed">
+        This will mark the requirement as completed and move it to your history. Other users will no longer be able to see it.
+      </p>
+      <div className="flex justify-end gap-3">
+        <button
+          onClick={onClose}
+          className="px-6 py-2.5 rounded-xl border border-gray-100 text-sm font-bold text-gray-400 hover:bg-gray-50 transition-colors"
+        >Cancel</button>
+        <button
+          onClick={onConfirm}
+          className="px-6 py-2.5 rounded-xl bg-[#00A389] text-white text-sm font-bold hover:bg-[#008F78] transition-colors shadow-lg shadow-emerald-100"
+        >Yes, Complete it</button>
+      </div>
+    </div>
   </div>
 );
 
@@ -66,7 +75,9 @@ const MyWytPost: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'posts' | 'matches' | 'responses' | 'completed'>(location.state?.activeTab || 'matches');
   const [menuOpenPostId, setMenuOpenPostId] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [completion, setCompletion] = useState<number>(0);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [viewingPost, setViewingPost] = useState<Post | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [subTab, setSubTab] = useState<string>('');
   const [expandedPosts, setExpandedPosts] = useState<string[]>([]);
@@ -107,7 +118,7 @@ const MyWytPost: React.FC = () => {
     const neededUserIds = new Set<string>();
 
     myPostsList.forEach(myPost => {
-      const matched = allPosts.filter(p => 
+      const matched = allPosts.filter(p =>
         p.user_id !== currentUserId &&
         !completedDealMap[p.id] &&
         p.object_id === myPost.object_id &&
@@ -141,30 +152,45 @@ const MyWytPost: React.FC = () => {
   };
 
   const fetchData = async () => {
-    setLoading(true);
     try {
-      const currentId = getUserIdFromToken();
-      const [postsData, interactionsData] = await Promise.all([
+      const [postRes, wishRes, eduRes, workRes, socialRes, interestRes, meRes, interactionsData] = await Promise.all([
         getPosts(),
+        getWishlist().catch(() => ({ items: [] })),
+        getEducation().catch(() => ({ items: [] })),
+        getWorks().catch(() => ({ items: [] })),
+        getSocials().catch(() => ({ items: [] })),
+        getInterests().catch(() => ({ items: [] })),
+        getMe().catch(() => ({ item: null })),
         getInteractions()
       ]);
 
-      const allPosts = postsData.items || [];
+      const allPosts = postRes.items || [];
+      const me = meRes.item as User;
+      if (me) {
+        setCurrentUser(me);
+        const comp = calculateProfileCompletion(
+          me,
+          wishRes.items as WishlistItem[],
+          eduRes.items as Education[],
+          workRes.items as Work[],
+          socialRes.items as Social[],
+          interestRes.items as Interest[]
+        );
+        setCompletion(comp);
+      }
+
       const allInteractions = interactionsData.items || [];
       setPosts(allPosts);
       setInteractions(allInteractions);
 
-      if (currentId) {
-        const currentUserData = await getUserById(currentId);
-        const user = currentUserData.item as User;
-        setCurrentUser(user);
-        await computeMatches(allPosts, currentId);
-        
+      if (me) {
+        await computeMatches(allPosts, me.id);
+
         const partnerIds = new Set<string>();
         allInteractions.forEach(i => {
-           if (i.user_id !== currentId) partnerIds.add(i.user_id);
-           const p = allPosts.find(post => post.id === i.post_id);
-           if (p && p.user_id !== currentId) partnerIds.add(p.user_id);
+          if (i.user_id !== me.id) partnerIds.add(i.user_id);
+          const p = allPosts.find(post => post.id === i.post_id);
+          if (p && p.user_id !== me.id) partnerIds.add(p.user_id);
         });
 
         const missingIds = Array.from(partnerIds).filter(id => !usersCache[id]);
@@ -211,7 +237,7 @@ const MyWytPost: React.FC = () => {
     }
   };
 
-  const currentId = getUserIdFromToken();
+  const currentId = currentUser?.id;
   const activePosts = posts.filter(p => !completedDealMap[p.id]);
   const myActivePosts = activePosts.filter(p => currentId && p.user_id === currentId);
 
@@ -241,28 +267,20 @@ const MyWytPost: React.FC = () => {
 
   const myReplies = Object.values(myRepliesGrouped);
 
-  const completedPosts = posts.filter(p => 
-    completedDealMap[p.id] && 
+  const completedPosts = posts.filter(p =>
+    completedDealMap[p.id] &&
     (completedSearch ? p.title.toLowerCase().includes(completedSearch.toLowerCase()) : true)
-  ).sort((a,b) => 
+  ).sort((a, b) =>
     new Date(completedDealMap[b.id].date).getTime() - new Date(completedDealMap[a.id].date).getTime()
   );
 
-  const expiredPosts = posts.filter(p => 
-    p.user_id === currentId && 
-    p.valid_until && 
+  const expiredPosts = posts.filter(p =>
+    p.user_id === currentId &&
+    p.valid_until &&
     new Date(p.valid_until) < new Date() &&
     !completedDealMap[p.id]
   );
   const expiredCount = expiredPosts.length;
-
-  const getProfileCompletion = (user: User | null) => {
-    if (!user) return 0;
-    const fields: (keyof User)[] = ['full_name', 'phone', 'location', 'bio', 'gender', 'dob', 'marital_status', 'mother_tongue', 'languages', 'avatar_url'];
-    const filled = fields.filter(f => user[f] && String(user[f]).trim() !== '').length;
-    return Math.round((filled / fields.length) * 100);
-  };
-  const completion = getProfileCompletion(currentUser);
 
   const handleCompleteConfirm = () => {
     if (confirmModal) {
@@ -271,7 +289,6 @@ const MyWytPost: React.FC = () => {
         [confirmModal.postId]: { partnerId: confirmModal.partnerId, date: new Date().toISOString() }
       }));
       setConfirmModal(null);
-      // Navigate to completed tab
       setActiveTab('completed');
     }
   };
@@ -282,30 +299,30 @@ const MyWytPost: React.FC = () => {
 
     return (
       <div className="mb-2 bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm transition-all hover:border-purple-100">
-        <div 
+        <div
           onClick={() => toggleExpand(match.myPost.id)}
           className={`flex items-center justify-between p-5 cursor-pointer transition-colors ${isExpanded ? 'bg-purple-600' : 'hover:bg-gray-50'}`}
         >
           <div className="flex items-center gap-5 flex-1 min-w-0">
-             <div className={`w-11 h-11 rounded-full flex items-center justify-center border-2 shrink-0 transition-colors ${isExpanded ? 'bg-purple-500/20 border-white/20 text-white' : 'bg-purple-50 border-white text-purple-500 shadow-sm'}`}>
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-             </div>
-             <div className="min-w-0">
-               <h3 className={`font-bold text-[13px] truncate mb-0.5 ${isExpanded ? 'text-white' : 'text-gray-900'}`}>{match.myPost.title}</h3>
-               <p className={`text-[10px] font-black uppercase tracking-widest ${isExpanded ? 'text-white/70' : 'text-gray-300'}`}>
-                 {matchCount} {matchCount === 1 ? 'MATCH' : 'MATCHES'} • POST BY YOU
-               </p>
-             </div>
+            <div className={`w-11 h-11 rounded-full flex items-center justify-center border-2 shrink-0 transition-colors ${isExpanded ? 'bg-purple-500/20 border-white/20 text-white' : 'bg-purple-50 border-white text-purple-500 shadow-sm'}`}>
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </div>
+            <div className="min-w-0">
+              <h3 className={`font-bold text-[13px] truncate mb-0.5 ${isExpanded ? 'text-white' : 'text-gray-900'}`}>{match.myPost.title}</h3>
+              <p className={`text-[10px] font-black uppercase tracking-widest ${isExpanded ? 'text-white/70' : 'text-gray-300'}`}>
+                {matchCount} {matchCount === 1 ? 'MATCH' : 'MATCHES'} • POST BY YOU
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-4">
-             <button 
+            <button
               onClick={(e) => { e.stopPropagation(); setConfirmModal({ postId: match.myPost.id }); }}
               className={`flex items-center gap-2 text-[10px] font-bold px-4 py-2 rounded-lg border-2 transition-all ${isExpanded ? 'bg-white text-purple-600 border-white shadow-lg' : 'bg-white text-purple-600 border-purple-50 shadow-sm hover:border-purple-100'}`}
-             >
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white bg-purple-600`}><svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></div>
-                Complete Requirement
-                <svg className={`h-3 w-3 ml-1 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-             </button>
+            >
+              <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white bg-purple-600`}><svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></div>
+              Complete Requirement
+              <svg className={`h-3 w-3 ml-1 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
           </div>
         </div>
 
@@ -313,42 +330,42 @@ const MyWytPost: React.FC = () => {
           <div className="bg-white border-t border-purple-100/50">
             {match.matchedPosts.map(post => {
               const partner = usersCache[post.user_id];
-              const matchInteractions = interactions.filter(i => 
-                (i.post_id === post.id || i.post_id === match.myPost.id) && 
+              const matchInteractions = interactions.filter(i =>
+                (i.post_id === post.id || i.post_id === match.myPost.id) &&
                 (i.user_id === currentId || i.user_id === post.user_id) &&
                 match.myPost.object_id === post.object_id
               );
-              const latestI = matchInteractions.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+              const latestI = matchInteractions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
               return (
                 <div key={post.id} className="flex items-center justify-between p-5 border-b border-gray-50 last:border-none group">
-                   <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                           <span className="text-[13px] font-bold text-gray-800 line-clamp-1">{post.title}</span>
-                           {latestI && <span className="text-[10px] text-gray-300 font-medium">{formatTimeAgo(latestI.created_at)}</span>}
-                        </div>
-                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">
-                          POST BY {partner?.username || 'user'} • {post.post_type.toLowerCase()} - match
-                        </p>
-                        {latestI ? (
-                          <p className="text-[11px] text-gray-500 font-medium truncate mb-1.5 italic">
-                            {latestI.user_id === currentId ? 'Your message: ' : `${partner?.username || 'user'}: `}{latestI.content}
-                          </p>
-                        ) : (
-                          <span className="text-[9px] bg-slate-50 text-slate-400 px-2 py-0.5 rounded font-black uppercase tracking-tighter">No interaction yet</span>
-                        )}
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[13px] font-bold text-gray-800 line-clamp-1">{post.title}</span>
+                        {latestI && <span className="text-[10px] text-gray-300 font-medium">{formatTimeAgo(latestI.created_at)}</span>}
                       </div>
-                   </div>
-                   <button 
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">
+                        POST BY {partner?.username || 'user'} • {post.post_type.toLowerCase()} - match
+                      </p>
+                      {latestI ? (
+                        <p className="text-[11px] text-gray-500 font-medium truncate mb-1.5 italic">
+                          {latestI.user_id === currentId ? 'Your message: ' : `${partner?.username || 'user'}: `}{latestI.content}
+                        </p>
+                      ) : (
+                        <span className="text-[9px] bg-slate-50 text-slate-400 px-2 py-0.5 rounded font-black uppercase tracking-tighter">No interaction yet</span>
+                      )}
+                    </div>
+                  </div>
+                  <button
                     onClick={() => {
                       const slug = (post.title || 'post').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
                       navigate(`/wytpost/chat/${slug}`, { state: { post, id: post.id, responder: partner, matchPostId: match.myPost.id } });
                     }}
                     className="bg-indigo-600 text-white text-[11px] font-bold px-6 py-2 rounded-lg shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all"
-                   >
-                     {latestI ? 'Open Chat' : 'Chat'}
-                   </button>
+                  >
+                    {latestI ? 'Open Chat' : 'Chat'}
+                  </button>
                 </div>
               );
             })}
@@ -364,30 +381,30 @@ const MyWytPost: React.FC = () => {
 
     return (
       <div className="mb-2 bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm transition-all hover:border-indigo-100">
-        <div 
+        <div
           onClick={() => toggleExpand(post.id)}
           className={`flex items-center justify-between p-5 cursor-pointer transition-colors ${isExpanded ? 'bg-indigo-600' : 'hover:bg-gray-50'}`}
         >
           <div className="flex items-center gap-5 flex-1 min-w-0">
-             <div className={`w-11 h-11 rounded-full flex items-center justify-center border-2 shrink-0 transition-colors ${isExpanded ? 'bg-indigo-500/20 border-white/20 text-white' : 'bg-blue-50 border-white text-blue-500 shadow-sm'}`}>
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-             </div>
-             <div className="min-w-0">
-               <h3 className={`font-bold text-[13px] truncate mb-0.5 ${isExpanded ? 'text-white' : 'text-gray-900'}`}>{post.title}</h3>
-               <p className={`text-[10px] font-black uppercase tracking-widest ${isExpanded ? 'text-white/70' : 'text-gray-300'}`}>
-                 {responderCount} {responderCount === 1 ? 'RESPONSE' : 'RESPONSES'}
-               </p>
-             </div>
+            <div className={`w-11 h-11 rounded-full flex items-center justify-center border-2 shrink-0 transition-colors ${isExpanded ? 'bg-indigo-500/20 border-white/20 text-white' : 'bg-blue-50 border-white text-blue-500 shadow-sm'}`}>
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </div>
+            <div className="min-w-0">
+              <h3 className={`font-bold text-[13px] truncate mb-0.5 ${isExpanded ? 'text-white' : 'text-gray-900'}`}>{post.title}</h3>
+              <p className={`text-[10px] font-black uppercase tracking-widest ${isExpanded ? 'text-white/70' : 'text-gray-300'}`}>
+                {responderCount} {responderCount === 1 ? 'RESPONSE' : 'RESPONSES'}
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-4">
-             <button 
+            <button
               onClick={(e) => { e.stopPropagation(); setConfirmModal({ postId: post.id }); }}
               className={`flex items-center gap-2 text-[10px] font-bold px-4 py-2 rounded-lg border-2 transition-all ${isExpanded ? 'bg-white text-indigo-600 border-white shadow-lg' : 'bg-white text-indigo-600 border-indigo-50 shadow-sm hover:border-indigo-100'}`}
-             >
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white bg-indigo-600`}><svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></div>
-                Complete Requirement
-                <svg className={`h-3 w-3 ml-1 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-             </button>
+            >
+              <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white bg-indigo-600`}><svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></div>
+              Complete Requirement
+              <svg className={`h-3 w-3 ml-1 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
           </div>
         </div>
 
@@ -396,31 +413,30 @@ const MyWytPost: React.FC = () => {
             {Object.keys(responders).map(uid => {
               const userInCache = usersCache[uid];
               const partnerInteractions = responders[uid];
-              const latestInteraction = partnerInteractions.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+              const latestInteraction = partnerInteractions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
               return (
                 <div key={uid} className="flex items-center justify-between p-5 border-b border-gray-50 last:border-none group">
-                   <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <div className="w-11 h-11 bg-gray-50 rounded-full flex items-center justify-center text-gray-400 font-bold shrink-0 border-2 border-white shadow-sm overflow-hidden text-sm uppercase">
-                         {userInCache?.username?.[0] || 'U'}
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className="w-11 h-11 bg-gray-50 rounded-full flex items-center justify-center text-gray-400 font-bold shrink-0 border-2 border-white shadow-sm overflow-hidden text-sm uppercase">
+                      {userInCache?.username?.[0] || 'U'}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[13px] font-bold text-gray-800">{userInCache?.username || 'user'}</span>
+                        <span className="text-[10px] text-gray-300 font-medium">{formatTimeAgo(latestInteraction.created_at)}</span>
                       </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                           <span className="text-[13px] font-bold text-gray-800">{userInCache?.username || 'user'}</span>
-                           <span className="text-[10px] text-gray-300 font-medium">{formatTimeAgo(latestInteraction.created_at)}</span>
-                        </div>
-                        <p className="text-[11px] text-gray-500 font-medium truncate mb-1">{latestInteraction.content}</p>
-                        {/* Status Label from Image 2 */}
-                        <span className="text-[9px] bg-slate-50 text-slate-400 px-2 py-0.5 rounded font-black uppercase tracking-tighter">Completed</span>
-                      </div>
-                   </div>
-                   <button 
+                      <p className="text-[11px] text-gray-500 font-medium truncate mb-1">{latestInteraction.content}</p>
+                      <span className="text-[9px] bg-slate-50 text-slate-400 px-2 py-0.5 rounded font-black uppercase tracking-tighter">Completed</span>
+                    </div>
+                  </div>
+                  <button
                     onClick={() => {
                       const slug = (post.title || 'post').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
                       navigate(`/wytpost/chat/${slug}`, { state: { post, id: post.id, responder: userInCache } });
                     }}
                     className="bg-indigo-600 text-white text-[11px] font-bold px-6 py-2 rounded-lg shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all"
-                   >Chat</button>
+                  >Chat</button>
                 </div>
               );
             })}
@@ -439,7 +455,7 @@ const MyWytPost: React.FC = () => {
       <div className="flex items-center justify-between py-5 border-b border-gray-100 group hover:bg-gray-50/50 transition-colors px-4 -mx-4 rounded-xl">
         <div className="flex items-center gap-4 flex-1 min-w-0">
           <div className="w-11 h-11 bg-gray-50 rounded-full flex items-center justify-center text-gray-400 font-bold shrink-0 border-2 border-white shadow-sm overflow-hidden text-sm uppercase">
-             {partner?.username?.[0] || 'U'}
+            {partner?.username?.[0] || 'U'}
           </div>
           <div>
             <h4 className="font-bold text-[13px] text-gray-900 leading-none mb-1">{post?.title || 'Interaction'}</h4>
@@ -450,7 +466,7 @@ const MyWytPost: React.FC = () => {
             <span className="bg-indigo-50 text-indigo-500 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">Waiting for reply</span>
           </div>
         </div>
-        <button 
+        <button
           onClick={() => {
             const slug = (post?.title || 'post').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
             navigate(`/wytpost/chat/${slug}`, { state: { post, id: post?.id, responder: partner } });
@@ -466,53 +482,53 @@ const MyWytPost: React.FC = () => {
     const isExpanded = expandedPosts.includes(post.id);
     const finishDate = new Date(deal.date).toLocaleDateString();
 
-    const historyInteractions = interactions.filter(i => 
-       i.post_id === post.id && 
-       (deal.partnerId ? (i.user_id === deal.partnerId || i.user_id === currentId) : true)
-    ).sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    const historyInteractions = interactions.filter(i =>
+      i.post_id === post.id &&
+      (deal.partnerId ? (i.user_id === deal.partnerId || i.user_id === currentId) : true)
+    ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
     return (
       <div className="bg-white rounded-[24px] border border-gray-100 overflow-hidden shadow-sm transition-all hover:border-emerald-100 mb-2">
-         <div className="p-6 flex items-center justify-between">
-            <div className="flex items-center gap-5">
-              <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-500 shadow-sm">
-                <svg className="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              </div>
-              <div>
-                <h4 className="text-[15px] font-bold text-gray-900 mb-0.5">{post.title}</h4>
-                <p className="text-[11px] text-gray-400 font-medium">Finished {finishDate}</p>
-              </div>
+        <div className="p-6 flex items-center justify-between">
+          <div className="flex items-center gap-5">
+            <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-500 shadow-sm">
+              <svg className="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </div>
-            <button 
-              onClick={() => toggleExpand(post.id)}
-              className="text-[10px] font-bold text-gray-400 hover:text-gray-900 flex items-center gap-2 transition-colors uppercase tracking-widest px-4 py-2"
-            >
-               {isExpanded ? 'Hide History' : 'View History'}
-            </button>
-         </div>
+            <div>
+              <h4 className="text-[15px] font-bold text-gray-900 mb-0.5">{post.title}</h4>
+              <p className="text-[11px] text-gray-400 font-medium">Finished {finishDate}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => toggleExpand(post.id)}
+            className="text-[10px] font-bold text-gray-400 hover:text-gray-900 flex items-center gap-2 transition-colors uppercase tracking-widest px-4 py-2"
+          >
+            {isExpanded ? 'Hide History' : 'View History'}
+          </button>
+        </div>
 
-         {isExpanded && (
-           <div className="px-6 pb-8 bg-slate-50/30 border-t border-gray-50">
-             <div className="mt-8 max-w-2xl mx-auto space-y-6">
-                {historyInteractions.map(i => {
-                  const isMine = i.user_id === currentId;
-                  const partner = usersCache[i.user_id];
-                  return (
-                    <div key={i.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                      <div className="max-w-[80%] flex items-start gap-2">
-                         {!isMine && <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-600 uppercase shrink-0">{partner?.username?.[0] || 'U'}</div>}
-                         <div className="group">
-                           <div className={`p-4 rounded-[20px] text-[13px] font-medium ${isMine ? 'bg-indigo-600 text-white rounded-br-none shadow-indigo-100 shadow-md' : 'bg-white text-gray-700 border border-gray-100 rounded-bl-none shadow-sm'}`}>
-                             {i.content}
-                           </div>
-                         </div>
+        {isExpanded && (
+          <div className="px-6 pb-8 bg-slate-50/30 border-t border-gray-50">
+            <div className="mt-8 max-w-2xl mx-auto space-y-6">
+              {historyInteractions.map(i => {
+                const isMine = i.user_id === currentId;
+                const partner = usersCache[i.user_id];
+                return (
+                  <div key={i.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                    <div className="max-w-[80%] flex items-start gap-2">
+                      {!isMine && <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-600 uppercase shrink-0">{partner?.username?.[0] || 'U'}</div>}
+                      <div className="group">
+                        <div className={`p-4 rounded-[20px] text-[13px] font-medium ${isMine ? 'bg-indigo-600 text-white rounded-br-none shadow-indigo-100 shadow-md' : 'bg-white text-gray-700 border border-gray-100 rounded-bl-none shadow-sm'}`}>
+                          {i.content}
+                        </div>
                       </div>
                     </div>
-                  );
-                })}
-             </div>
-           </div>
-         )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -521,7 +537,7 @@ const MyWytPost: React.FC = () => {
     setFilterPostId(null);
   };
 
-  const filteredMatches = filterPostId 
+  const filteredMatches = filterPostId
     ? matches.filter(m => m.myPost.id === filterPostId)
     : matches;
 
@@ -538,14 +554,11 @@ const MyWytPost: React.FC = () => {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors">
       <header className="sticky top-0 z-50 flex items-center justify-between px-6 py-3 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 shrink-0 transition-colors">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 bg-wyt-gradient rounded-full flex items-center justify-center cursor-pointer" onClick={() => navigate('/dashboard')}>
-            <span className="text-white font-bold text-xl">W</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-wyt-primary">WytNet</h1>
+        <div className="flex items-center cursor-pointer" onClick={() => navigate('/dashboard')}>
+          <Logo size="md" />
         </div>
         <div className="flex items-center gap-6">
-          <button 
+          <button
             onClick={toggleTheme}
             className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
           >
@@ -561,7 +574,7 @@ const MyWytPost: React.FC = () => {
           </button>
           <NotificationDropdown />
           <div className="flex items-center gap-3 pl-4 border-l border-gray-200 dark:border-slate-700 relative" ref={userMenuRef}>
-            <button 
+            <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
               className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-slate-700/50 p-1 rounded-xl transition-all"
             >
@@ -581,7 +594,7 @@ const MyWytPost: React.FC = () => {
                   <p className="text-[10px] font-bold text-gray-400 truncate uppercase tracking-widest">{currentUser?.email || 'User Account'}</p>
                 </div>
                 {isAdmin() && (
-                  <button 
+                  <button
                     onClick={() => navigate('/admin')}
                     className="w-full flex items-center gap-3 px-6 py-3 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all font-bold text-xs uppercase tracking-widest text-left"
                   >
@@ -589,7 +602,7 @@ const MyWytPost: React.FC = () => {
                     Admin Panel
                   </button>
                 )}
-                <button 
+                <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-6 py-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all font-bold text-xs uppercase tracking-widest text-left"
                 >
@@ -627,7 +640,7 @@ const MyWytPost: React.FC = () => {
                 { id: 'responses', label: 'Responses', count: responsePosts.length + myReplies.length },
                 { id: 'completed', label: 'Completed', count: completedPosts.length }
               ].map(tab => (
-                <button 
+                <button
                   key={tab.id}
                   onClick={() => {
                     setActiveTab(tab.id as any);
@@ -656,7 +669,7 @@ const MyWytPost: React.FC = () => {
                     <h4 className="text-sm font-bold text-blue-900 line-clamp-1">{filteringPost.post_type} {filteringPost.title}</h4>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={clearFilter}
                   className="flex items-center gap-2 bg-white text-blue-600 px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100 shadow-sm hover:bg-blue-600 hover:text-white transition-all cursor-pointer group"
                 >
@@ -667,254 +680,263 @@ const MyWytPost: React.FC = () => {
             )}
 
             <div className="min-h-[400px]">
-              {loading && !posts.length ? (
-                <div className="flex flex-col items-center justify-center py-24 whitespace-nowrap">
-                   <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Refreshing Dashboard...</p>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {activeTab === 'posts' && (
-                    <div className="space-y-4">
-                      {myActivePosts.length > 0 ? (
-                        myActivePosts.map(post => {
-                          const postMatches = matches.find(m => m.myPost.id === post.id)?.matchedPosts.length || 0;
-                          const postResponses = Object.keys(responsesByPost[post.id] || {}).length;
-                          const postComments = interactions.filter(i => i.post_id === post.id && i.action_type === 'COMMENT').length;
-                          const postLikes = 0; // Totals not available in current API
-                          
-                          const timeAgo = formatTimeAgo(post.created_at);
-                          
-                          // Icon logic based on type or content (simplified for now)
-                          const getIcon = (title: string) => {
-                            if (title.toLowerCase().includes('coffee')) return (
-                              <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-500 shadow-sm border border-emerald-100/50">
-                                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16.72 11.06A5 5 0 0115 20H5a5 5 0 01-5-5 5 5 0 014.12-4.94A10.89 10.89 0 010 8a10 10 0 0120 0 10.89 10.89 0 01-.12 2.06 5 5 0 01-3.16 1zM5 18a3 3 0 100-6 3 3 0 000 6z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                              </div>
-                            );
-                            if (title.toLowerCase().includes('pen')) return (
-                              <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-500 shadow-sm border border-blue-100/50">
-                                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                              </div>
-                            );
-                            return (
-                              <div className="w-12 h-12 bg-green-50 rounded-2xl flex items-center justify-center text-green-500 shadow-sm border border-green-100/50">
-                                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                              </div>
-                            );
-                          };
+              <div className="space-y-1">
+                {activeTab === 'posts' && (
+                  <div className="space-y-4">
+                    {myActivePosts.length > 0 ? (
+                      myActivePosts.map(post => {
+                        const postMatches = matches.find(m => m.myPost.id === post.id)?.matchedPosts.length || 0;
+                        const postResponses = Object.keys(responsesByPost[post.id] || {}).length;
+                        const postComments = interactions.filter(i => i.post_id === post.id && i.action_type === 'COMMENT').length;
+                        const postLikes = 0; // Totals not available in current API
 
-                          return (
-                            <div key={post.id} className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm hover:shadow-xl hover:shadow-indigo-50/50 transition-all group relative">
-                              <div className="flex items-start justify-between mb-6">
-                                <div className="flex items-center gap-6">
-                                  {getIcon(post.title)}
-                                  <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-3">
-                                      <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${post.post_type === 'NEED' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
-                                        {post.post_type}
-                                      </span>
-                                      <span className="flex items-center gap-1.5 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                                        {timeAgo}
-                                      </span>
-                                    </div>
-                                    <h3 className="text-xl font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{post.title}</h3>
-                                    <p className="text-[13px] text-gray-400 font-medium italic">"{post.description || 'No description'}"</p>
-                                  </div>
-                                </div>
-                                <div className="relative" ref={menuOpenPostId === post.id ? menuRef : null}>
-                                  <button 
-                                    onClick={() => setMenuOpenPostId(menuOpenPostId === post.id ? null : post.id)}
-                                    className="p-2 text-gray-300 hover:text-gray-600 hover:bg-gray-50 rounded-full transition-all"
-                                  >
-                                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                                  </button>
+                        const timeAgo = formatTimeAgo(post.created_at);
 
-                                  {menuOpenPostId === post.id && (
-                                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-[60] animate-in fade-in zoom-in duration-200 origin-top-right">
-                                      <button 
-                                        onClick={() => {
-                                          setEditingPost(post);
-                                          setIsEditModalOpen(true);
-                                          setMenuOpenPostId(null);
-                                        }}
-                                        className="w-full text-left px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
-                                      >
-                                        Edit Post
-                                      </button>
-                                      <button 
-                                        onClick={() => handleDeletePost(post.id)}
-                                        className="w-full text-left px-5 py-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors flex items-center justify-between"
-                                      >
-                                        Delete
-                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                                      </button>
-                                      <button 
-                                        onClick={() => {
-                                          navigate('/dashboard', { state: { highlightedPostId: post.id } });
-                                        }}
-                                        className="w-full text-left px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-between"
-                                      >
-                                        View Post
-                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-8 pt-6 border-t border-gray-50">
-                                <div className="flex items-center gap-2 text-gray-400 hover:text-red-500 cursor-pointer transition-colors group/stat">
-                                  <svg className="h-4 w-4 transform group-hover/stat:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                                  <span className="text-[10px] font-black uppercase tracking-widest">{postLikes}</span>
-                                </div>
-                                <div className="flex items-center gap-2 text-gray-400 hover:text-indigo-600 cursor-pointer transition-colors group/stat">
-                                  <svg className="h-4 w-4 transform group-hover/stat:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                                  <span className="text-[10px] font-black uppercase tracking-widest">{postComments}</span>
-                                </div>
-                                <div 
-                                  onClick={() => { setActiveTab('matches'); setFilterPostId(post.id); window.scrollTo(0,0); }}
-                                  className="flex items-center gap-2 cursor-pointer hover:bg-emerald-50 px-2 py-1 rounded-lg transition-colors group/stat"
-                                >
-                                  <span className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em] group-hover/stat:underline">{postMatches} Matches</span>
-                                </div>
-                                <div 
-                                  onClick={() => { setActiveTab('responses'); setFilterPostId(post.id); window.scrollTo(0,0); }}
-                                  className="flex items-center gap-2 cursor-pointer hover:bg-indigo-50 px-2 py-1 rounded-lg transition-colors group/stat"
-                                >
-                                  <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] group-hover/stat:underline">{postResponses} Responses</span>
-                                </div>
-                              </div>
+                        // Icon logic based on type or content (simplified for now)
+                        const getIcon = (title: string) => {
+                          if (title.toLowerCase().includes('coffee')) return (
+                            <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-500 shadow-sm border border-emerald-100/50">
+                              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16.72 11.06A5 5 0 0115 20H5a5 5 0 01-5-5 5 5 0 014.12-4.94A10.89 10.89 0 010 8a10 10 0 0120 0 10.89 10.89 0 01-.12 2.06 5 5 0 01-3.16 1zM5 18a3 3 0 100-6 3 3 0 000 6z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                             </div>
                           );
-                        })
-                      ) : (
-                        <div className="text-center py-40 bg-gray-50/50 rounded-[2.5rem] border border-dashed border-gray-200">
-                          <p className="text-xs font-black text-gray-300 uppercase tracking-widest">No matching posts</p>
-                        </div>
-                      )}
-                      
-                      {expiredCount > 0 && (
-                        <div className="mt-12 flex justify-center pb-6">
-                          <div className="bg-red-50 text-red-500 px-6 py-2.5 rounded-full border border-red-100/50 shadow-sm flex items-center gap-2 animate-bounce cursor-pointer hover:bg-red-100 transition-all">
-                            <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse"></div>
-                            <span className="text-[10px] font-black uppercase tracking-widest">{expiredCount} Expired Posts</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                          if (title.toLowerCase().includes('pen')) return (
+                            <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-500 shadow-sm border border-blue-100/50">
+                              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                            </div>
+                          );
+                          return (
+                            <div className="w-12 h-12 bg-green-50 rounded-2xl flex items-center justify-center text-green-500 shadow-sm border border-green-100/50">
+                              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                            </div>
+                          );
+                        };
 
-                  {activeTab === 'matches' && (
-                    <div className="space-y-2">
-                       {filteredMatches.length > 0 ? (
-                        filteredMatches.map(m => (
-                          <MatchAccordion key={m.myPost.id} match={m} />
+                        return (
+                          <div key={post.id} className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm hover:shadow-xl hover:shadow-indigo-50/50 transition-all group relative">
+                            <div className="flex items-start justify-between mb-6">
+                              <div className="flex items-center gap-6">
+                                {getIcon(post.title)}
+                                <div className="flex flex-col gap-1">
+                                  <div className="flex items-center gap-3">
+                                    <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${post.post_type === 'NEED' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
+                                      {post.post_type}
+                                    </span>
+                                    <span className="flex items-center gap-1.5 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                                      {timeAgo}
+                                    </span>
+                                  </div>
+                                  <h3 className="text-xl font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{post.title}</h3>
+                                  <p className="text-[13px] text-gray-400 font-medium italic">"{post.description || 'No description'}"</p>
+                                </div>
+                              </div>
+                              <div className="relative" ref={menuOpenPostId === post.id ? menuRef : null}>
+                                <button
+                                  onClick={() => setMenuOpenPostId(menuOpenPostId === post.id ? null : post.id)}
+                                  className="p-2 text-gray-300 hover:text-gray-600 hover:bg-gray-50 rounded-full transition-all"
+                                >
+                                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                                </button>
+
+                                {menuOpenPostId === post.id && (
+                                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-[60] animate-in fade-in zoom-in duration-200 origin-top-right">
+                                    <button
+                                      onClick={() => {
+                                        setEditingPost(post);
+                                        setIsEditModalOpen(true);
+                                        setMenuOpenPostId(null);
+                                      }}
+                                      className="w-full text-left px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                                    >
+                                      Edit Post
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeletePost(post.id)}
+                                      className="w-full text-left px-5 py-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors flex items-center justify-between"
+                                    >
+                                      Delete
+                                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setViewingPost(post);
+                                        setMenuOpenPostId(null);
+                                      }}
+                                      className="w-full text-left px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-between"
+                                    >
+                                      View Post
+                                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-8 pt-6 border-t border-gray-50">
+                              <div className="flex items-center gap-2 text-gray-400 hover:text-red-500 cursor-pointer transition-colors group/stat">
+                                <svg className="h-4 w-4 transform group-hover/stat:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                                <span className="text-[10px] font-black uppercase tracking-widest">{postLikes}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-gray-400 hover:text-indigo-600 cursor-pointer transition-colors group/stat">
+                                <svg className="h-4 w-4 transform group-hover/stat:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                                <span className="text-[10px] font-black uppercase tracking-widest">{postComments}</span>
+                              </div>
+                              <div
+                                onClick={() => { setActiveTab('matches'); setFilterPostId(post.id); window.scrollTo(0, 0); }}
+                                className="flex items-center gap-2 cursor-pointer hover:bg-emerald-50 px-2 py-1 rounded-lg transition-colors group/stat"
+                              >
+                                <span className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em] group-hover/stat:underline">{postMatches} Matches</span>
+                              </div>
+                              <div
+                                onClick={() => { setActiveTab('responses'); setFilterPostId(post.id); window.scrollTo(0, 0); }}
+                                className="flex items-center gap-2 cursor-pointer hover:bg-indigo-50 px-2 py-1 rounded-lg transition-colors group/stat"
+                              >
+                                <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] group-hover/stat:underline">{postResponses} Responses</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : loading ? (
+                      <div className="space-y-4">
+                        <PostSkeleton />
+                        <PostSkeleton />
+                      </div>
+                    ) : (
+                      <div className="text-center py-40 bg-gray-50/50 rounded-[2.5rem] border border-dashed border-gray-200">
+                        <p className="text-xs font-black text-gray-300 uppercase tracking-widest">No matching posts</p>
+                      </div>
+                    )}
+
+                    {expiredCount > 0 && (
+                      <div className="mt-12 flex justify-center pb-6">
+                        <div className="bg-red-50 text-red-500 px-6 py-2.5 rounded-full border border-red-100/50 shadow-sm flex items-center gap-2 animate-bounce cursor-pointer hover:bg-red-100 transition-all">
+                          <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse"></div>
+                          <span className="text-[10px] font-black uppercase tracking-widest">{expiredCount} Expired Posts</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'matches' && (
+                  <div className="space-y-2">
+                    {filteredMatches.length > 0 ? (
+                      filteredMatches.map(m => (
+                        <MatchAccordion key={m.myPost.id} match={m} />
+                      ))
+                    ) : loading ? (
+                      <div className="space-y-4">
+                        <PostSkeleton />
+                        <PostSkeleton />
+                      </div>
+                    ) : (
+                      <div className="text-center py-40 flex flex-col items-center gap-4 opacity-30">
+                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-4xl">🔎</div>
+                        <p className="text-xs font-black uppercase tracking-widest">No matches found</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'responses' && (
+                  <div className="space-y-4">
+                    {!filterPostId && (
+                      <div className="flex gap-4 mb-6 px-1">
+                        <button onClick={() => setSubTab('')} className={`text-[10px] font-black uppercase tracking-tighter px-4 py-2.5 rounded-xl transition-all shadow-sm ${subTab === '' ? 'bg-indigo-600 text-white shadow-indigo-100' : 'bg-gray-100 text-gray-400'}`}>My Post Responses {responsePosts.length}</button>
+                        <button onClick={() => setSubTab('replies')} className={`text-[10px] font-black uppercase tracking-tighter px-4 py-2.5 rounded-xl transition-all shadow-sm ${subTab === 'replies' ? 'bg-indigo-600 text-white shadow-indigo-100' : 'bg-gray-100 text-gray-400'}`}>My Replies {myReplies.length}</button>
+                      </div>
+                    )}
+
+                    {subTab === '' ? (
+                      filteredResponsePosts.length > 0 ? (
+                        filteredResponsePosts.map(post => (
+                          <ResponseAccordion key={post.id} post={post} responders={responsesByPost[post.id]} />
                         ))
+                      ) : loading ? (
+                        <div className="space-y-4">
+                          <PostSkeleton />
+                          <PostSkeleton />
+                        </div>
                       ) : (
                         <div className="text-center py-40 flex flex-col items-center gap-4 opacity-30">
-                             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-4xl">🔎</div>
-                             <p className="text-xs font-black uppercase tracking-widest">No matches found</p>
+                          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-4xl">📭</div>
+                          <p className="text-xs font-black uppercase tracking-widest">No responses found</p>
                         </div>
-                      )}
-                    </div>
-                  )}
-
-                  {activeTab === 'responses' && (
-                    <div className="space-y-4">
-                      {!filterPostId && (
-                        <div className="flex gap-4 mb-6 px-1">
-                          <button onClick={() => setSubTab('')} className={`text-[10px] font-black uppercase tracking-tighter px-4 py-2.5 rounded-xl transition-all shadow-sm ${subTab === '' ? 'bg-indigo-600 text-white shadow-indigo-100' : 'bg-gray-100 text-gray-400'}`}>My Post Responses {responsePosts.length}</button>
-                          <button onClick={() => setSubTab('replies')} className={`text-[10px] font-black uppercase tracking-tighter px-4 py-2.5 rounded-xl transition-all shadow-sm ${subTab === 'replies' ? 'bg-indigo-600 text-white shadow-indigo-100' : 'bg-gray-100 text-gray-400'}`}>My Replies {myReplies.length}</button>
-                        </div>
-                      )}
-
-                      {subTab === '' ? (
-                        filteredResponsePosts.length > 0 ? (
-                          filteredResponsePosts.map(post => (
-                            <ResponseAccordion key={post.id} post={post} responders={responsesByPost[post.id]} />
-                          ))
-                        ) : (
-                          <div className="text-center py-40 flex flex-col items-center gap-4 opacity-30">
-                             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-4xl">📭</div>
-                             <p className="text-xs font-black uppercase tracking-widest">No responses found</p>
-                          </div>
-                        )
-                      ) : (
-                        filteredMyReplies.length > 0 ? (
-                          filteredMyReplies.map(reply => (
-                            <InteractionItem key={reply.id} interaction={reply} post={posts.find(p => p.id === reply.post_id)} isReply />
-                          ))
-                        ) : (
-                          <div className="text-center py-20 text-gray-300 font-bold text-xs font-black uppercase tracking-widest">No replies yet</div>
-                        )
-                      )}
-                    </div>
-                  )}
-
-                  {activeTab === 'completed' && (
-                    <div className="space-y-4">
-                      <div className="mb-8 p-1 flex items-center justify-between gap-4">
-                         <div className="flex items-center gap-4">
-                            <h3 className="text-xl font-bold text-gray-900">Completed Requirements 👏</h3>
-                         </div>
-                         <div className="relative flex-1 max-w-sm">
-                            <svg className="h-4 w-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                            <input 
-                              type="text" 
-                              value={completedSearch}
-                              onChange={(e) => setCompletedSearch(e.target.value)}
-                              placeholder="Search completed deals..."
-                              className="w-full pl-11 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-emerald-500/20 transition-all text-xs font-medium outline-none"
-                            />
-                         </div>
-                      </div>
-
-                      {completedSearch && (
-                        <div className="px-1 mb-6 flex items-center justify-between">
-                           <div className="flex items-center gap-2">
-                              <span className="text-[10px] font-black uppercase text-gray-300 tracking-widest">Filtering results for:</span>
-                              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100/50 flex items-center gap-2">
-                                {completedSearch}
-                                <button onClick={() => setCompletedSearch('')} className="hover:text-emerald-800 transition-colors">✕</button>
-                              </span>
-                           </div>
-                           <button onClick={() => setCompletedSearch('')} className="text-xs font-bold text-gray-400 hover:text-gray-900 transition-colors uppercase tracking-widest">Clear Filter</button>
-                        </div>
-                      )}
-
-                      {completedPosts.length > 0 ? (
-                        completedPosts.map(post => (
-                          <CompletedItem key={post.id} post={post} />
+                      )
+                    ) : (
+                      filteredMyReplies.length > 0 ? (
+                        filteredMyReplies.map(reply => (
+                          <InteractionItem key={reply.id} interaction={reply} post={posts.find(p => p.id === reply.post_id)} isReply />
                         ))
-                      ) : (
-                        <div className="text-center py-40 flex flex-col items-center gap-5">
-                          <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-3xl">🗃️</div>
-                          <p className="text-xs font-black text-gray-300 uppercase tracking-widest">
-                            {completedSearch ? 'No completed deals match your search' : "No active deals — here are the requirements you've completed!"}
-                          </p>
-                        </div>
-                      )}
+                      ) : !loading ? (
+                        <div className="text-center py-20 text-gray-300 font-bold text-xs font-black uppercase tracking-widest">No replies yet</div>
+                      ) : null
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'completed' && (
+                  <div className="space-y-4">
+                    <div className="mb-8 p-1 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <h3 className="text-xl font-bold text-gray-900">Completed Requirements 👏</h3>
+                      </div>
+                      <div className="relative flex-1 max-w-sm">
+                        <svg className="h-4 w-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        <input
+                          type="text"
+                          value={completedSearch}
+                          onChange={(e) => setCompletedSearch(e.target.value)}
+                          placeholder="Search completed deals..."
+                          className="w-full pl-11 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-emerald-500/20 transition-all text-xs font-medium outline-none"
+                        />
+                      </div>
                     </div>
-                  )}
-                </div>
-              )}
+
+                    {completedSearch && (
+                      <div className="px-1 mb-6 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase text-gray-300 tracking-widest">Filtering results for:</span>
+                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100/50 flex items-center gap-2">
+                            {completedSearch}
+                            <button onClick={() => setCompletedSearch('')} className="hover:text-emerald-800 transition-colors">✕</button>
+                          </span>
+                        </div>
+                        <button onClick={() => setCompletedSearch('')} className="text-xs font-bold text-gray-400 hover:text-gray-900 transition-colors uppercase tracking-widest">Clear Filter</button>
+                      </div>
+                    )}
+
+                    {completedPosts.length > 0 ? (
+                      completedPosts.map(post => (
+                        <CompletedItem key={post.id} post={post} />
+                      ))
+                    ) : (
+                      <div className="text-center py-40 flex flex-col items-center gap-5">
+                        <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-3xl">🗃️</div>
+                        <p className="text-xs font-black text-gray-300 uppercase tracking-widest">
+                          {completedSearch ? 'No completed deals match your search' : "No active deals — here are the requirements you've completed!"}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </main>
-        <RightBar onNewPost={() => {}} needsCount={activePosts.filter(p => p.post_type === 'NEED').length} offersCount={activePosts.filter(p => p.post_type === 'OFFER').length} />
+        <RightBar onNewPost={() => { }} needsCount={activePosts.filter(p => p.post_type === 'NEED').length} offersCount={activePosts.filter(p => p.post_type === 'OFFER').length} />
       </div>
 
       {confirmModal && (
-        <ConfirmationModal 
-          onClose={() => setConfirmModal(null)} 
-          onConfirm={handleCompleteConfirm} 
+        <ConfirmationModal
+          onClose={() => setConfirmModal(null)}
+          onConfirm={handleCompleteConfirm}
         />
       )}
 
       {isEditModalOpen && editingPost && (
-        <EditPostModal 
+        <EditPostModal
           post={editingPost}
           onClose={() => {
             setIsEditModalOpen(false);
@@ -924,6 +946,18 @@ const MyWytPost: React.FC = () => {
             setIsEditModalOpen(false);
             setEditingPost(null);
             fetchData();
+          }}
+        />
+      )}
+
+      {viewingPost && (
+        <ViewPostModal
+          post={viewingPost}
+          onClose={() => setViewingPost(null)}
+          onEdit={(p) => {
+            setViewingPost(null);
+            setEditingPost(p);
+            setIsEditModalOpen(true);
           }}
         />
       )}

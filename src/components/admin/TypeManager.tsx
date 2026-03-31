@@ -1,120 +1,233 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getObjectTypes, createObjectType, updateObjectType, deleteObjectType } from '../../api/object';
 import { ObjectType } from '../../api/types';
+import ConfirmModal from './ConfirmModal';
 
-const TypeManager: React.FC = () => {
-  const [types, setTypes] = useState<ObjectType[]>([]);
-  const [loading, setLoading] = useState(true);
+interface TypeManagerProps {
+  createTrigger: number;
+  onTriggerHandled?: () => void;
+}
+
+const TypeManager: React.FC<TypeManagerProps> = ({ createTrigger, onTriggerHandled }) => {
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingType, setEditingType] = useState<ObjectType | null>(null);
   const [formData, setFormData] = useState({
     name: '',
+    slug: '',
     description: '',
     icon: '',
   });
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    id: string | null;
+    name: string;
+  }>({
+    isOpen: false,
+    id: null,
+    name: ''
+  });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const res = await getObjectTypes();
-      setTypes(res.items || []);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+  // Watch for external create trigger
+  React.useEffect(() => {
+    if (createTrigger > 0) {
+      setEditingType(null);
+      setFormData({ name: '', slug: '', description: '', icon: 'category' });
+      setIsModalOpen(true);
+      onTriggerHandled?.();
     }
-  };
+  }, [createTrigger, onTriggerHandled]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
+  // Fetch Types
+  const { data: typesRes, isLoading: loading } = useQuery({
+    queryKey: ['types'],
+    queryFn: getObjectTypes
+  });
+  const types = typesRes?.items || [];
+
+  // Mutations
+  const saveMutation = useMutation({
+    mutationFn: async (data: typeof formData) => {
       if (editingType) {
-        await updateObjectType(editingType.id, formData);
-      } else {
-        await createObjectType(formData);
+        return updateObjectType(editingType.id, data);
       }
+      return createObjectType(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['types'] });
       setIsModalOpen(false);
       setEditingType(null);
-      setFormData({ name: '', description: '', icon: '' });
-      fetchData();
-    } catch (e) {
+      setFormData({ name: '', slug: '', description: '', icon: '' });
+    },
+    onError: () => {
       alert('Error saving object type');
     }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteObjectType,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['types'] });
+      setConfirmState(prev => ({ ...prev, isOpen: false }));
+    },
+    onError: () => {
+      alert('Error deleting object type');
+    }
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveMutation.mutate(formData);
   };
 
   const handleEdit = (type: ObjectType) => {
     setEditingType(type);
     setFormData({
       name: type.name,
+      slug: type.slug || '',
       description: type.description || '',
       icon: type.icon || '',
     });
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this type? This may affect objects linked to it.')) {
-      try {
-        await deleteObjectType(id);
-        fetchData();
-      } catch (e) {
-        alert('Error deleting object type');
-      }
+  const handleDelete = (id: string, name: string) => {
+    setConfirmState({ isOpen: true, id, name });
+  };
+
+  const handleConfirmDelete = () => {
+    if (confirmState.id) {
+      deleteMutation.mutate(confirmState.id);
     }
   };
 
-  return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">Metadata Categories</h3>
-        <button 
-          onClick={() => { setEditingType(null); setIsModalOpen(true); }}
-          className="px-6 py-2 bg-wyt-primary text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-transform active:scale-95 shadow-lg shadow-indigo-100 dark:shadow-none"
-        >
-          Add Type
-        </button>
-      </div>
+  const filteredTypes = types.filter(t => 
+    t.name.toLowerCase().includes(search.toLowerCase()) || 
+    t.slug?.toLowerCase().includes(search.toLowerCase()) ||
+    t.description?.toLowerCase().includes(search.toLowerCase())
+  );
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {loading ? (
-          <div className="col-span-full py-20 text-center text-gray-400 italic">Loading types...</div>
-        ) : types.length === 0 ? (
-          <div className="col-span-full py-20 text-center text-gray-400 italic">No object types defined.</div>
-        ) : (
-          types.map(type => (
-            <div key={type.id} className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 border border-gray-100 dark:border-slate-800 hover:border-indigo-500/30 hover:shadow-2xl hover:shadow-indigo-100/20 transition-all group relative overflow-hidden">
-              <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-50 dark:bg-indigo-900/10 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              
-              <div className="flex items-start justify-between mb-6 relative z-10">
-                <div className="w-16 h-16 bg-indigo-50 dark:bg-slate-800 rounded-2xl flex flex-col items-center justify-center shadow-inner overflow-hidden">
-                  {(type.icon?.includes('_') || (type.icon?.length ?? 0) > 2) ? (
-                    <span className="material-icons text-indigo-600 text-2xl">{type.icon}</span>
-                  ) : (
-                    <span className="text-2xl">{type.icon || '📦'}</span>
-                  )}
-                  <span className="text-[8px] font-black uppercase text-indigo-300 dark:text-indigo-700 mt-1">{type.icon?.substring(0, 10)}</span>
-                </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
-                  <button onClick={() => handleEdit(type)} className="p-2.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded-xl transition-all shadow-sm bg-white dark:bg-slate-900">
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" strokeWidth="2.5" /></svg>
-                  </button>
-                  <button onClick={() => handleDelete(type.id)} className="p-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-slate-800 rounded-xl transition-all shadow-sm bg-white dark:bg-slate-900">
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth="2.5" /></svg>
-                  </button>
-                </div>
-              </div>
-              
-              <div className="relative z-10">
-                <h4 className="font-extrabold text-gray-900 dark:text-white uppercase tracking-tight text-xl mb-2">{type.name}</h4>
-                <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed font-medium line-clamp-2">{type.description || 'Define common characteristics for this object category.'}</p>
+  const stats = [
+    { label: 'Total Types', value: types.length, icon: 'category' },
+    { label: 'Total Icons', value: types.filter(t => t.icon).length, icon: 'insert_emoticon' },
+    { label: 'With Description', value: types.filter(t => t.description).length, icon: 'description' },
+    { label: 'Manual Slugs', value: types.filter(t => t.slug).length, icon: 'link' }
+  ];
+
+  return (
+    <div className="p-8">
+      {/* Stats Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {stats.map((stat, i) => (
+          <div key={i} className="p-6 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-3xl shadow-sm hover:shadow-md transition-all">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">{stat.label}</p>
+            <div className="flex items-end justify-between">
+              <h3 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter">{stat.value}</h3>
+              <div className="w-10 h-10 bg-gray-50 dark:bg-slate-900 rounded-xl flex items-center justify-center text-gray-400">
+                <span className="material-icons">{stat.icon}</span>
               </div>
             </div>
-          ))
-        )}
+          </div>
+        ))}
+      </div>
+
+      {/* Filter Bar */}
+      <div className="flex flex-wrap items-center gap-3 mb-6 bg-gray-50/50 dark:bg-slate-900/30 p-2 rounded-2xl border border-gray-100 dark:border-slate-800">
+        <div className="relative flex-1 min-w-[200px]">
+          <input 
+            type="text" 
+            placeholder="Search types by name, slug or description..." 
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-sm focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all dark:text-white"
+          />
+          <span className="material-icons absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">search</span>
+        </div>
+        
+        <div className="flex gap-1 ml-auto">
+           <button className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"><span className="material-icons">chevron_left</span></button>
+           <button className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"><span className="material-icons">chevron_right</span></button>
+        </div>
+      </div>
+
+      {/* Redesigned List View (Table) */}
+      <div className="overflow-x-auto rounded-[2rem] border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-800 shadow-sm">
+        <table className="w-full text-left font-sans">
+          <thead className="bg-gray-50 dark:bg-slate-900 border-b border-gray-100 dark:border-slate-700">
+            <tr>
+              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest w-24">Icon</th>
+              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Category</th>
+              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Slug</th>
+              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Description</th>
+              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50 dark:divide-slate-700/50">
+            {loading ? (
+              <tr>
+                <td colSpan={5} className="px-8 py-20 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-4 border-indigo-50 border-t-indigo-600 rounded-full animate-spin"></div>
+                    <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Loading Categories...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : types.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-8 py-20 text-center text-gray-400 uppercase text-[10px] font-bold tracking-widest italic">
+                  No object types defined.
+                </td>
+              </tr>
+            ) : (
+              filteredTypes.map(type => (
+                <tr key={type.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/20 transition-all group">
+                  <td className="px-8 py-5">
+                    <div className="w-12 h-12 bg-indigo-50 dark:bg-slate-900 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform shadow-inner overflow-hidden border border-indigo-100/50 dark:border-slate-700">
+                      {(type.icon?.includes('_') || (type.icon?.length ?? 0) > 2) ? (
+                        <span className="material-icons text-xl">{type.icon}</span>
+                      ) : (
+                        <span className="text-xl">{type.icon || '📦'}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-8 py-5">
+                    <div className="text-sm font-black text-gray-900 dark:text-white tracking-tight uppercase">{type.name}</div>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span className="px-3 py-1 bg-gray-100 dark:bg-slate-900 text-gray-500 rounded-lg text-[10px] font-mono border border-gray-200 dark:border-slate-700">
+                      {type.slug}
+                    </span>
+                  </td>
+                  <td className="px-8 py-5">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate max-w-[300px]">
+                      {type.description || 'No description provided.'}
+                    </p>
+                  </td>
+                  <td className="px-8 py-5 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button 
+                        onClick={() => handleEdit(type)} 
+                        className="p-2.5 text-gray-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-slate-900 rounded-xl transition-all shadow-none hover:shadow-lg shadow-indigo-100"
+                        title="Edit Type"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" strokeWidth="2.5" /></svg>
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(type.id, type.name)} 
+                        className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-white dark:hover:bg-slate-900 rounded-xl transition-all shadow-none hover:shadow-lg shadow-red-100"
+                        title="Delete Category"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1 1v3M4 7h16" strokeWidth="2.5" /></svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       {isModalOpen && (
@@ -140,9 +253,24 @@ const TypeManager: React.FC = () => {
                 <input 
                   type="text" 
                   value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  onChange={(e) => {
+                    const newName = e.target.value;
+                    const newSlug = newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                    setFormData({...formData, name: newName, slug: editingType ? formData.slug : newSlug});
+                  }}
                   required
                   className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-wyt-primary/20 outline-none transition-all dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1.5 ml-1">Slug (Identifier)</label>
+                <input 
+                  type="text" 
+                  value={formData.slug}
+                  onChange={(e) => setFormData({...formData, slug: e.target.value.toLowerCase().replace(/\s+/g, '-')})}
+                  required
+                  placeholder="e.g. vehicle-type"
+                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-mono focus:ring-2 focus:ring-wyt-primary/20 outline-none transition-all dark:text-white"
                 />
               </div>
               <div>
@@ -173,6 +301,17 @@ const TypeManager: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Branded Confirmation Modal */}
+      <ConfirmModal 
+        isOpen={confirmState.isOpen}
+        onClose={() => setConfirmState({ ...confirmState, isOpen: false })}
+        onConfirm={handleConfirmDelete}
+        title="Delete Category?"
+        message={`Are you sure you want to delete the category "${confirmState.name}"? This will remove the classification from linked objects but will NOT delete the objects themselves.`}
+        confirmText="Yes, Delete Category"
+        isDestructive={true}
+      />
     </div>
   );
 };

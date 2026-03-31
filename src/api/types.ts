@@ -2,6 +2,7 @@ export interface BaseResponse<T> {
   item?: T;
   items?: T[];
   total?: number;
+  itemCount?: number;
 }
 
 export interface AuthItem {
@@ -25,6 +26,8 @@ export interface User {
   languages?: string;
   avatar_url?: string;
   profile_picture_url?: string;
+  is_superuser?: boolean;
+  is_active?: boolean;
 }
 
 export interface Post {
@@ -43,6 +46,8 @@ export interface Post {
   like_count?: number;
   comment_count?: number;
   view_count?: number;
+  views?: number;
+  owner_id?: string;
   allow_like?: boolean;
   allow_comment?: boolean;
   allow_share?: boolean;
@@ -71,7 +76,7 @@ export interface WishlistItem {
   progress?: number;
   steps_count?: number;
   completed_steps?: number;
-  visibility?: 'PUBLIC' | 'PRIVATE'; 
+  visibility?: 'PUBLIC' | 'PRIVATE';
 }
 
 export interface Education {
@@ -140,6 +145,7 @@ export interface ObjectAlias {
 export interface ObjectType {
   id: string;
   name: string;
+  slug: string;
   description?: string;
   icon?: string;
   is_active: boolean;
@@ -151,13 +157,14 @@ export interface WytObject {
   category?: string;
   description?: string;
   icon?: string;
-  type_id?: string;
+  type_id?: string | null;
   is_active: boolean;
   normalized_name: string;
   aliases?: ObjectAlias[];
   type?: ObjectType;
   child_count?: number;
   parent_name?: string;
+  parent_names?: string[];
 }
 
 export interface ObjectRelation {

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Logo from '../components/Logo';
 import { getPosts } from '../api/post';
 import { getUserById } from '../api/user';
 import { Post, User } from '../api/types';
+import PostSkeleton from '../components/PostSkeleton';
 
 const formatTimeAgo = (dateString: string) => {
   const date = new Date(dateString);
@@ -21,7 +23,7 @@ const formatTimeAgo = (dateString: string) => {
 const Landing: React.FC = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [usersCache, setUsersCache] = useState<Record<string, User>>({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -31,11 +33,10 @@ const Landing: React.FC = () => {
         const items = postsRes.items || [];
         setPosts(items);
 
-        // Fetch users for posts to get usernames/avatars
         const userIds = Array.from(new Set(items.map(p => p.user_id)));
         const userPromises = userIds.map(id => getUserById(id));
         const userResponses = await Promise.all(userPromises);
-        
+
         const newCache: Record<string, User> = {};
         userResponses.forEach(res => {
           if (res.item) {
@@ -56,229 +57,230 @@ const Landing: React.FC = () => {
   const goToLogin = () => navigate('/login');
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#fff', fontFamily: "'Inter', sans-serif", display: 'flex', flexDirection: 'column' }}>
-      {/* Navbar */}
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 2.5rem', borderBottom: '1px solid #f1f3f7', position: 'sticky', top: 0, backgroundColor: '#fff', zIndex: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <img src="/favicon.svg" alt="WytNet Logo" style={{ width: '36px', height: '36px', objectFit: 'contain' }} />
-          <span style={{ fontSize: '1.6rem', fontWeight: '800', color: '#5c59f2', letterSpacing: '-0.02em' }}>WytNet</span>
+    <div className="min-h-screen bg-[#f8fafc] text-gray-800 font-['Inter'] flex flex-col">
+      {/* BEGIN: MainHeader */}
+      <header className="bg-white border-b border-gray-100 py-3 px-6 flex justify-between items-center sticky top-0 z-50 shadow-[0_1px_2px_0_rgba(0,0,0,0.03)]">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center cursor-pointer" onClick={() => navigate('/')}>
+            <Logo size="md" />
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-          <button style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}>🌙</button>
-          <button onClick={goToLogin} style={{ backgroundColor: '#5c59f2', color: 'white', padding: '0.6rem 1.4rem', borderRadius: '8px', fontWeight: '700', fontSize: '0.9rem' }}>Login / Join</button>
+        <div className="flex items-center gap-5">
+          <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-full transition-all">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path>
+            </svg>
+          </button>
+          <button onClick={goToLogin} className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition-all shadow-sm">
+            Login / Join
+          </button>
         </div>
       </header>
+      {/* END: MainHeader */}
 
-      <div style={{ display: 'flex', flex: 1, padding: '1.5rem 2.5rem', gap: '2rem' }}>
-        {/* Left Sidebar */}
-        <aside style={{ width: '240px', flexShrink: 0 }}>
-          <p style={{ fontSize: '0.65rem', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '1rem' }}>Filter by Location</p>
-          <div style={{ position: 'relative' }}>
-            <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>🔍</span>
-            <input 
-              type="text" 
-              placeholder="City or region..." 
-              style={{ width: '100%', padding: '0.7rem 1rem 0.7rem 2.5rem', borderRadius: '12px', border: '1px solid #f1f3f7', backgroundColor: '#fcfcfd', fontSize: '0.85rem', outline: 'none' }}
-            />
+      {/* BEGIN: MainContent */}
+      <main className="max-w-[1400px] mx-auto w-full px-6 py-6 grid grid-cols-1 md:grid-cols-12 gap-6 flex-1">
+
+        {/* BEGIN: SidebarLeft (Filters) */}
+        <aside className="md:col-span-2 space-y-4">
+          <h2 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest pl-1">Filter By Location</h2>
+          <div className="relative">
+            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+            </span>
+            <input className="block w-full pl-9 pr-3 py-2.5 border border-gray-100 rounded-xl text-sm bg-gray-50/50 focus:ring-wyt-purple focus:border-wyt-purple placeholder-gray-400 outline-none" placeholder="City or region..." type="text" />
           </div>
         </aside>
 
-        {/* Main Content */}
-        <main style={{ flex: 1, maxWidth: '800px' }}>
-          {/* Dashboard Header */}
-          <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#5c59f2', borderRadius: '12px', padding: '4px', marginBottom: '1.5rem', color: 'white', fontSize: '0.8rem', fontWeight: '700' }}>
-            <div style={{ flex: 1, backgroundColor: '#4739b3', borderRadius: '8px', padding: '0.6rem 1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>✨ WytWall</span>
-              <span style={{ opacity: 0.5 }}>|</span>
-              <span style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-                <span>🔍</span>
-                <input placeholder="Search..." style={{ background: 'none', border: 'none', color: 'white', outline: 'none', width: '100%', fontSize: '0.8rem' }} />
-              </span>
+        {/* BEGIN: FeedCenter */}
+        <section className="md:col-span-8 space-y-4">
+          {/* Feed Header Bar */}
+          <div className="bg-wyt-purple rounded-2xl p-1.5 flex items-center gap-3 text-white shadow-lg overflow-hidden">
+            <div className="flex items-center gap-2 font-bold px-4 py-2.5 bg-white/10 rounded-xl hover:bg-white/20 transition-all cursor-pointer">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"></path></svg>
+              <span className="text-sm">WytWall</span>
             </div>
-            <button onClick={goToLogin} style={{ padding: '0.6rem 1.2rem', background: 'none', color: 'white' }}>+ Add Post</button>
+            <div className="relative flex-1">
+              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center">
+                <svg className="h-4 w-4 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"></path></svg>
+              </span>
+              <input className="block w-full pl-10 pr-4 py-2.5 bg-white/5 border-none rounded-xl text-sm text-white placeholder-white/50 focus:ring-2 focus:ring-white/10 transition-all outline-none" placeholder="Search..." type="text" />
+            </div>
+            <button onClick={goToLogin} className="bg-white text-wyt-purple font-extrabold px-6 py-2.5 rounded-xl text-sm flex items-center gap-2 hover:bg-gray-50 transition-all active:scale-95 shadow-sm">
+              <span className="text-lg leading-none">+</span> Add Post
+            </button>
           </div>
 
-          {/* Welcome Card */}
-          <div style={{ backgroundColor: '#fcfcfd', borderRadius: '24px', border: '1px solid #f1f3f7', padding: '2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'flex-start', gap: '1.5rem' }}>
-            <div style={{ width: '48px', height: '48px', backgroundColor: '#5c59f2', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', color: 'white' }}>✨</div>
-            <div style={{ flex: 1 }}>
-              <h2 style={{ fontSize: '1.4rem', fontWeight: '800', color: '#1e293b', marginBottom: '0.4rem' }}>Welcome to WytWall</h2>
-              <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '1.2rem' }}>Your digital marketplace for opportunities, services, and connections.</p>
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>👥 Growing Community</span>
-                <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>✅ Verified Users</span>
-                <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>⚡ Smart Matching</span>
+          {/* Welcome Dashboard */}
+          <div className="bg-white border border-gray-50 rounded-[2rem] p-5 shadow-sm flex flex-col md:flex-row items-center gap-5 transition-all hover:shadow-md">
+            <div className="bg-gradient-to-br from-indigo-500 to-wyt-purple p-3 rounded-2xl text-white shadow-xl shadow-purple-100">
+              <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-7.714 2.143L11 21l-2.286-6.857L1 12l7.714-2.143L11 3z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+            </div>
+            <div className="flex-1">
+              <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Welcome to WytWall</h1>
+              <p className="text-xs text-gray-500 mt-0.5">Your digital marketplace for opportunities, services, and connections.</p>
+              <div className="flex flex-wrap gap-3 mt-3">
+                <div className="flex items-center gap-1.5 text-emerald-600 text-[10px] font-bold">
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path></svg>
+                  Growing Community
+                </div>
+                <div className="flex items-center gap-1.5 text-emerald-600 text-[10px] font-bold">
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path></svg>
+                  Verified Users
+                </div>
+                <div className="flex items-center gap-1.5 text-wyt-purple text-[10px] font-bold">
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd"></path></svg>
+                  Smart Matching
+                </div>
               </div>
             </div>
           </div>
 
           {/* Post Feed */}
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>Loading interesting posts...</div>
+          {loading && !posts.length ? (
+            <div className="flex flex-col gap-4">
+              <PostSkeleton />
+              <PostSkeleton />
+              <PostSkeleton />
+            </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="flex flex-col gap-4">
               {posts.map(post => {
                 const user = usersCache[post.user_id];
-                const typeColor = post.post_type === 'NEED' ? '#10b981' : '#3b82f6';
-                const typeBg = post.post_type === 'NEED' ? '#ecfdf5' : '#eff6ff';
+                const typeBg = post.post_type === 'NEED' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600';
 
                 const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
                 const rawUrl = post.image_url ? String(post.image_url).trim() : '';
-                const titleMatch = post.title && rawUrl.toLowerCase() === post.title.trim().toLowerCase();
                 const invalidValues = ['string', 'none', 'null', 'undefined', '', 'placeholder', 'nan'];
                 const hasExtension = /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(rawUrl);
                 const isUrl = rawUrl.startsWith('http');
                 const isPath = rawUrl.includes('/');
-                
-                const imageUrl = (rawUrl && !invalidValues.includes(rawUrl.toLowerCase()) && !titleMatch && (isUrl || (isPath && hasExtension)))
+
+                const imageUrl = (rawUrl && !invalidValues.includes(rawUrl.toLowerCase()) && (isUrl || (isPath && hasExtension)))
                   ? (isUrl ? rawUrl : `${baseUrl}/${rawUrl}`)
                   : null;
 
                 return (
-                  <div key={post.id} style={{ backgroundColor: '#fff', borderRadius: '24px', border: '1px solid #f1f3f7', padding: '1.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.2rem', alignItems: 'flex-start' }}>
-                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                        <div style={{ 
-                          width: '40px', 
-                          height: '40px', 
-                          borderRadius: '12px', 
-                          backgroundColor: post.post_type === 'NEED' ? '#7c3aed' : '#ec4899', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center', 
-                          fontWeight: '700', 
-                          fontSize: '1rem', 
-                          color: 'white' 
-                        }}>
+                  <article key={post.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)] hover:shadow-md transition-all">
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-indigo-900 rounded-xl flex items-center justify-center text-white font-bold text-xs">
                           {user?.username?.[0]?.toUpperCase() || 'U'}
                         </div>
                         <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ fontWeight: '700', fontSize: '0.95rem', color: '#1e293b' }}>{user?.username || 'User'}</span>
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                              <span style={{ backgroundColor: typeBg, color: typeColor, fontSize: '0.6rem', fontWeight: '800', padding: '1px 6px', borderRadius: '4px', letterSpacing: '0.02em' }}>{post.post_type}</span>
-                              <span style={{ backgroundColor: '#f1f5f9', color: '#94a3b8', fontSize: '0.6rem', fontWeight: '800', padding: '1px 6px', borderRadius: '4px', letterSpacing: '0.02em' }}>ACTIVE</span>
-                            </div>
+                          <h3 className="font-extrabold text-gray-900 text-xs">{user?.username || 'User'}</h3>
+                          <div className="flex items-center gap-2 text-[9px] text-gray-400 font-medium">
+                            <span className="flex items-center gap-1">📍 {post.location || 'Anywhere'}</span>
+                            <span className="flex items-center gap-1">🕒 {formatTimeAgo(post.created_at)}</span>
                           </div>
-                          <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: '500', marginTop: '2px' }}>📍 {post.location} • {formatTimeAgo(post.created_at)}</div>
                         </div>
                       </div>
-                      <button 
-                        onClick={goToLogin} 
-                        style={{ 
-                          color: '#5c59f2', 
-                          backgroundColor: '#f5f3ff', 
-                          border: '1px solid #e0e7ff', 
-                          padding: '0.4rem 1rem', 
-                          borderRadius: '20px', 
-                          fontSize: '0.75rem', 
-                          fontWeight: '700', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '4px',
-                          cursor: 'pointer' 
-                        }}
-                      >
-                        <span style={{ fontSize: '1rem' }}>+</span> Follow
+                      <div className="flex items-center gap-2">
+                        <span className={`${typeBg} px-2.5 py-1 rounded-lg text-[8px] font-extrabold uppercase tracking-widest`}>{post.post_type}</span>
+                        <span className="bg-gray-50 text-gray-400 px-2.5 py-1 rounded-lg text-[8px] font-extrabold uppercase tracking-widest">Active</span>
+                        <button onClick={goToLogin} className="ml-1 text-blue-600 text-[9px] font-bold flex items-center gap-1 border border-blue-100 px-3 py-1 rounded-full hover:bg-blue-600 hover:text-white transition-all whitespace-nowrap">
+                          + Follow
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pl-0.5 mb-1">
+                      <div className="flex gap-4">
+                        <div className="flex-1">
+                          <h4 className="text-base font-extrabold text-gray-900 mb-0.5 leading-tight">{post.title}</h4>
+                          <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">{post.description}</p>
+                        </div>
+                        {imageUrl && (
+                          <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-gray-50 shadow-sm">
+                            <img src={imageUrl} alt={post.title} className="w-full h-full object-cover" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center mb-1 pl-0.5">
+                      <div className="flex items-center gap-4 text-gray-400 text-[10px] font-semibold">
+                        <span className="flex items-center gap-1.5 hover:text-indigo-600 cursor-pointer transition-all">🤍 {post.like_count || 0}</span>
+                        <span className="flex items-center gap-1.5 hover:text-indigo-600 cursor-pointer transition-all">💬 {post.comment_count || 0}</span>
+                        <span className="flex items-center gap-1.5 hover:text-indigo-600 cursor-pointer transition-all">👁️ {post.view_count || 0}</span>
+                      </div>
+                      <button className="text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1 text-[10px] font-bold">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                        Share
                       </button>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1.2rem' }}>
-                      <div style={{ flex: 1 }}>
-                        <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#1e293b', marginBottom: '0.8rem' }}>{post.title}</h3>
-                        <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: '1.5', margin: 0 }}>{post.description}</p>
-                      </div>
-                      
-                      {imageUrl && (
-                        <div style={{ width: '100px', height: '64px', borderRadius: '12px', overflow: 'hidden', flexShrink: 0, border: '1px solid #f1f3f7' }}>
-                          <img src={imageUrl} alt={post.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.2rem', color: '#94a3b8', fontSize: '0.75rem', fontWeight: '500', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', gap: '1.2rem' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.7 }}>🤍 {post.like_count || 0}</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.7 }}>💬 {post.comment_count || 0}</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.7 }}>👁️ {post.view_count || 0}</span>
-                      </div>
-                      <span style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8 }}>🔗 Share</span>
-                    </div>
-
-                    <button 
-                      onClick={goToLogin} 
-                      style={{ 
-                        width: '100%', 
-                        padding: '0.75rem 1.5rem', 
-                        backgroundColor: typeColor, 
-                        color: 'white', 
-                        fontWeight: '700', 
-                        borderRadius: '12px', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        gap: '8px' ,
-                        boxShadow: `0 4px 12px -2px ${typeColor}40`,
-                        fontSize: '0.9rem',
-                        border: 'none',
-                        cursor: 'pointer'
-                      }}
+                    <button
+                      onClick={goToLogin}
+                      className="w-full hover:opacity-90 text-white font-bold py-1.5 rounded-lg flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.98] text-xs bg-[#10b981]"
                     >
-                      <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"></path>
-                      </svg>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"></path></svg>
                       Login to Respond
                     </button>
-                  </div>
+                  </article>
                 );
               })}
             </div>
           )}
-        </main>
+        </section>
 
-        {/* Right Sidebar */}
-        <aside style={{ width: '300px', flexShrink: 0 }}>
-          <div style={{ backgroundColor: '#fcfcfd', borderRadius: '24px', border: '1px solid #f1f3f7', padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-            <div style={{ width: '48px', height: '48px', backgroundColor: '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', marginBottom: '1rem', color: '#94a3b8' }}>👥</div>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#1e293b', marginBottom: '0.5rem' }}>Join and Get WytPass</h3>
-            <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.5rem', lineHeight: '1.4' }}>Sign up today and get your WytPass identity for all features.</p>
-            <button onClick={goToLogin} style={{ width: '100%', padding: '0.9rem', backgroundColor: '#3b82f6', color: 'white', fontWeight: '800', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              Sign Up Free ➔
+        {/* BEGIN: SidebarRight (CTA) */}
+        <aside className="md:col-span-2 space-y-6">
+          <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm sticky top-24 text-center">
+            <div className="bg-gray-50 w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 mb-3 mx-auto">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"></path></svg>
+            </div>
+            <h2 className="text-sm font-extrabold text-gray-900 leading-tight">Join and Get WytPass</h2>
+            <p className="text-[10px] text-gray-500 mt-1 mb-4 leading-relaxed line-clamp-2 text-center">Sign up today and get your digital WytPass identity.</p>
+            <button onClick={goToLogin} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 rounded-lg flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95 text-[10px]">
+              Sign Up Free
+              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 7l5 5m0 0l-5 5m5-5H6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
             </button>
           </div>
         </aside>
-      </div>
+      </main>
 
-      {/* Footer */}
-      <footer style={{ padding: '4rem 2.5rem', borderTop: '1px solid #f1f3f7', backgroundColor: '#fff', display: 'flex', flexWrap: 'wrap', gap: '4rem' }}>
-        <div style={{ maxWidth: '300px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
-            <img src="/favicon.svg" alt="WytNet Logo" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
-            <span style={{ fontSize: '1.4rem', fontWeight: '800', color: '#5c59f2' }}>WytNet</span>
-          </div>
-          <p style={{ fontSize: '0.85rem', color: '#94a3b8', lineHeight: '1.6' }}>Your community marketplace. Connect, trade, and build meaningful relationships.</p>
-          <p style={{ marginTop: '2rem', fontSize: '0.75rem', color: '#cbd5e0' }}>© 2026 WytNet. All rights reserved.</p>
-        </div>
-        
-        {[
-          { title: 'PRODUCT', links: ['WytWall', 'WytPass', 'Get Started'] },
-          { title: 'COMMUNITY', links: ['View Posts', 'Join Now'] },
-          { title: 'COMPANY', links: ['About Us', 'Privacy Policy', 'Terms of Service'] }
-        ].map(group => (
-          <div key={group.title}>
-            <p style={{ fontSize: '0.7rem', fontWeight: '800', color: '#1e293b', marginBottom: '1.5rem', letterSpacing: '0.1em' }}>{group.title}</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-              {group.links.map(link => (
-                <span key={link} style={{ fontSize: '0.85rem', color: '#94a3b8', cursor: 'pointer' }}>{link}</span>
-              ))}
+      <footer className="bg-white border-t border-gray-100 mt-16 py-12">
+        <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-12">
+          <div className="space-y-5">
+            <div className="flex items-center gap-3">
+              <svg className="h-8 w-8" viewBox="0 0 48 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path fill="#5d2999" d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z" />
+              </svg>
+              <span className="text-2xl font-extrabold text-blue-600 tracking-tight">WytNet</span>
             </div>
+            <p className="text-sm text-gray-400 leading-relaxed">
+              Your community marketplace. Connect, trade, and build meaningful relationships across the globe.
+            </p>
           </div>
-        ))}
-        
-        <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-           <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Powered by <span style={{ color: '#5c59f2', fontWeight: '700' }}>WytPass</span> • Universal Identity & Validation</p>
+
+          {[
+            { title: 'PRODUCT', links: ['WytWall', 'WytPass', 'Get Started'] },
+            { title: 'COMMUNITY', links: ['View Posts', 'Join Now', 'Verified Users'] },
+            { title: 'COMPANY', links: ['About Us', 'Privacy Policy', 'Terms of Service'] }
+          ].map(group => (
+            <div key={group.title}>
+              <h4 className="text-[10px] font-extrabold text-gray-900 uppercase tracking-[0.2em] mb-6">{group.title}</h4>
+              <ul className="space-y-3 text-sm text-gray-500 font-semibold">
+                {group.links.map(link => (
+                  <li key={link}><a href="#" className="hover:text-indigo-600 transition-colors">{link}</a></li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+
+        <div className="max-w-7xl mx-auto border-t border-gray-50 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 px-6">
+          <p className="text-xs text-gray-400 font-medium">© 2026 WytNet ecosystem. All rights reserved.</p>
+          <div className="flex items-center gap-2 text-xs text-gray-400 font-medium">
+            <span>Powered by</span>
+            <span className="text-indigo-600 font-extrabold">WytPass</span>
+            <span className="mx-1">•</span>
+            <span>Universal Identity System</span>
+          </div>
         </div>
       </footer>
+      {/* END: MainContent */}
     </div>
   );
 };

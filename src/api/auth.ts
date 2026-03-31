@@ -31,3 +31,9 @@ export const refresh = async (): Promise<BaseResponse<AuthItem>> => {
   setToken(access_token);
   return response.data;
 };
+export const googleLogin = async (idToken: string): Promise<BaseResponse<AuthItem>> => {
+  const response = await client.post<BaseResponse<AuthItem>>('/auth/google', { id_token: idToken });
+  const { access_token } = response.data.item!;
+  setToken(access_token);
+  return response.data;
+};
