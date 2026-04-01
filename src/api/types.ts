@@ -28,13 +28,14 @@ export interface User {
   profile_picture_url?: string;
   is_superuser?: boolean;
   is_active?: boolean;
+  role?: string;
 }
 
 export interface Post {
   id: string;
   content: string;
   user_id: string;
-  object_id: string;
+  object_id?: string;
   image_url?: string;
   created_at: string;
   post_type: 'NEED' | 'OFFER';
@@ -52,6 +53,7 @@ export interface Post {
   allow_comment?: boolean;
   allow_share?: boolean;
   allow_response?: boolean;
+  is_public?: boolean;
 }
 
 export interface WishlistStep {

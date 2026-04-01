@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import Logo from '../components/Logo';
 import Sidebar from '../components/Sidebar';
 import RightBar from '../components/RightBar';
 import PostSkeleton from '../components/PostSkeleton';
-import { getPosts, deletePost } from '../api/post';
+import { getPosts, deletePost, updatePost } from '../api/post';
 import { getUserById, getMe } from '../api/user';
 import { getWishlist } from '../api/wishlist';
 import { getEducation } from '../api/education';
@@ -59,6 +60,32 @@ const ConfirmationModal: React.FC<{ onClose: () => void, onConfirm: () => void }
   </div>
 );
 
+const RenewModal: React.FC<{ onClose: () => void, onRenew: (days: number) => void }> = ({ onClose, onRenew }) => {
+  const [days, setDays] = useState(7);
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-[32px] p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200 border border-gray-100">
+        <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-500 mb-6 shadow-sm mx-auto">
+          <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </div>
+        <h3 className="text-xl font-bold mb-2 text-center text-gray-900">Renew Post</h3>
+        <p className="text-[10px] text-gray-400 mb-8 uppercase tracking-[0.2em] font-bold text-center">How many days to extend?</p>
+        <div className="grid grid-cols-3 gap-3 mb-10">
+          {[7, 15, 30].map(d => (
+            <button key={d} onClick={() => setDays(d)} className={`py-4 rounded-2xl text-[11px] font-bold uppercase tracking-widest border-2 transition-all duration-300 ${days === d ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100' : 'bg-gray-50 border-transparent text-gray-400 hover:bg-gray-100'}`}>
+              {d} Days
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-4">
+          <button onClick={onClose} className="flex-1 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest hover:text-gray-900 transition-colors">Cancel</button>
+          <button onClick={() => onRenew(days)} className="flex-1 py-4 bg-indigo-600 text-white font-bold text-[10px] uppercase tracking-widest rounded-2xl shadow-xl shadow-indigo-100 active:scale-95 hover:bg-indigo-700 transition-all">Confirm</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MyWytPost: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const { username } = useParams<{ username: string }>();
@@ -88,6 +115,8 @@ const MyWytPost: React.FC = () => {
   const [confirmModal, setConfirmModal] = useState<{ postId: string, partnerId?: string } | null>(null);
   const [completedSearch, setCompletedSearch] = useState('');
   const [filterPostId, setFilterPostId] = useState<string | null>(location.state?.filterPostId || null);
+  const [isExpiredExpanded, setIsExpiredExpanded] = useState(false);
+  const [renewPostId, setRenewPostId] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem('wytnet_completed_posts', JSON.stringify(completedDealMap));
@@ -117,16 +146,44 @@ const MyWytPost: React.FC = () => {
     const result: { myPost: Post, matchedPosts: Post[] }[] = [];
     const neededUserIds = new Set<string>();
 
+    const stopWords = new Set(['want', 'to', 'i', 'need', 'looking', 'for', 'a', 'an', 'the', 'in', 'at', 'offer', 'my', 'is', 'i offer', 'i need']);
+
     myPostsList.forEach(myPost => {
-      const matched = allPosts.filter(p =>
-        p.user_id !== currentUserId &&
-        !completedDealMap[p.id] &&
-        p.object_id === myPost.object_id &&
-        (
-          (myPost.post_type === 'NEED' && p.post_type === 'OFFER') ||
-          (myPost.post_type === 'OFFER' && p.post_type === 'NEED')
-        )
-      );
+      // Extract core keywords by stripping "in [Location]" and common prefixes
+      const getCoreKeywords = (title: string) => {
+        const lowerTitle = title.toLowerCase();
+        // Remove "i need", "i offer" prefixes
+        let core = lowerTitle.replace(/^i (need|offer)\s+/, '');
+        // Remove everything from " in " onwards (location)
+        const inIndex = core.lastIndexOf(' in ');
+        if (inIndex !== -1) {
+          core = core.substring(0, inIndex);
+        }
+        return core.split(/\W+/).filter(w => w.length > 2 && !stopWords.has(w));
+      };
+
+      const myTitleWords = getCoreKeywords(myPost.title);
+
+      const matched = allPosts.filter(p => {
+        if (p.user_id === currentUserId || completedDealMap[p.id]) return false;
+
+        // Ensure opposite post types (NEED vs OFFER)
+        const isOpposite = (myPost.post_type === 'NEED' && p.post_type === 'OFFER') ||
+          (myPost.post_type === 'OFFER' && p.post_type === 'NEED');
+        if (!isOpposite) return false;
+
+        // 1. Direct matching by object_id (Strongest match)
+        if (myPost.object_id && p.object_id && myPost.object_id === p.object_id) return true;
+
+        // 2. Keyword matching fallback (if either doesn't have an object_id)
+        if (!myPost.object_id || !p.object_id) {
+          const pTitleWords = getCoreKeywords(p.title);
+          // If ANY core keyword matches, consider it a potential match
+          return myTitleWords.some(word => pTitleWords.includes(word));
+        }
+
+        return false;
+      });
 
       if (matched.length > 0) {
         result.push({ myPost, matchedPosts: matched });
@@ -180,7 +237,8 @@ const MyWytPost: React.FC = () => {
       }
 
       const allInteractions = interactionsData.items || [];
-      setPosts(allPosts);
+      const sortedPosts = allPosts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setPosts(sortedPosts);
       setInteractions(allInteractions);
 
       if (me) {
@@ -232,13 +290,14 @@ const MyWytPost: React.FC = () => {
         setMenuOpenPostId(null);
       } catch (err) {
         console.error('Failed to delete post:', err);
-        alert('Failed to delete post.');
+        toast.error('Failed to delete post.');
       }
     }
   };
 
   const currentId = currentUser?.id;
-  const activePosts = posts.filter(p => !completedDealMap[p.id]);
+  const isExpired = (p: Post) => p.valid_until && new Date(p.valid_until) < new Date();
+  const activePosts = posts.filter(p => !completedDealMap[p.id] && !isExpired(p));
   const myActivePosts = activePosts.filter(p => currentId && p.user_id === currentId);
 
   const allMatchedPostIds = new Set(matches.flatMap(m => m.matchedPosts.map(p => p.id)));
@@ -282,6 +341,20 @@ const MyWytPost: React.FC = () => {
   );
   const expiredCount = expiredPosts.length;
 
+  const handleRenewPost = async (days: number) => {
+    if (!renewPostId) return;
+    try {
+      const newExpiry = new Date();
+      newExpiry.setDate(new Date().getDate() + days);
+      await updatePost(renewPostId, { valid_until: newExpiry.toISOString() });
+      setRenewPostId(null);
+      setIsExpiredExpanded(false);
+      fetchData();
+    } catch (err) {
+      console.error('Failed to renew post:', err);
+    }
+  };
+
   const handleCompleteConfirm = () => {
     if (confirmModal) {
       setCompletedDealMap(prev => ({
@@ -308,8 +381,8 @@ const MyWytPost: React.FC = () => {
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </div>
             <div className="min-w-0">
-              <h3 className={`font-bold text-[13px] truncate mb-0.5 ${isExpanded ? 'text-white' : 'text-gray-900'}`}>{match.myPost.title}</h3>
-              <p className={`text-[10px] font-black uppercase tracking-widest ${isExpanded ? 'text-white/70' : 'text-gray-300'}`}>
+              <h3 className={`font-semibold text-[13px] truncate mb-0.5 ${isExpanded ? 'text-white' : 'text-gray-900'}`}>{match.myPost.title}</h3>
+              <p className={`text-[10px] font-bold uppercase tracking-widest ${isExpanded ? 'text-white/70' : 'text-gray-300'}`}>
                 {matchCount} {matchCount === 1 ? 'MATCH' : 'MATCHES'} • POST BY YOU
               </p>
             </div>
@@ -346,11 +419,11 @@ const MyWytPost: React.FC = () => {
                         {latestI && <span className="text-[10px] text-gray-300 font-medium">{formatTimeAgo(latestI.created_at)}</span>}
                       </div>
                       <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">
-                        POST BY {partner?.username || 'user'} • {post.post_type.toLowerCase()} - match
+                        POST BY {partner?.full_name || partner?.username || 'user'} • {post.post_type.toLowerCase()} - match
                       </p>
                       {latestI ? (
                         <p className="text-[11px] text-gray-500 font-medium truncate mb-1.5 italic">
-                          {latestI.user_id === currentId ? 'Your message: ' : `${partner?.username || 'user'}: `}{latestI.content}
+                          {latestI.user_id === currentId ? 'Your message: ' : `${partner?.full_name || partner?.username || 'user'}: `}{latestI.content}
                         </p>
                       ) : (
                         <span className="text-[9px] bg-slate-50 text-slate-400 px-2 py-0.5 rounded font-black uppercase tracking-tighter">No interaction yet</span>
@@ -390,8 +463,8 @@ const MyWytPost: React.FC = () => {
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </div>
             <div className="min-w-0">
-              <h3 className={`font-bold text-[13px] truncate mb-0.5 ${isExpanded ? 'text-white' : 'text-gray-900'}`}>{post.title}</h3>
-              <p className={`text-[10px] font-black uppercase tracking-widest ${isExpanded ? 'text-white/70' : 'text-gray-300'}`}>
+              <h3 className={`font-semibold text-[13px] truncate mb-0.5 ${isExpanded ? 'text-white' : 'text-gray-900'}`}>{post.title}</h3>
+              <p className={`text-[10px] font-bold uppercase tracking-widest ${isExpanded ? 'text-white/70' : 'text-gray-300'}`}>
                 {responderCount} {responderCount === 1 ? 'RESPONSE' : 'RESPONSES'}
               </p>
             </div>
@@ -419,15 +492,15 @@ const MyWytPost: React.FC = () => {
                 <div key={uid} className="flex items-center justify-between p-5 border-b border-gray-50 last:border-none group">
                   <div className="flex items-center gap-4 flex-1 min-w-0">
                     <div className="w-11 h-11 bg-gray-50 rounded-full flex items-center justify-center text-gray-400 font-bold shrink-0 border-2 border-white shadow-sm overflow-hidden text-sm uppercase">
-                      {userInCache?.username?.[0] || 'U'}
+                      {(userInCache?.full_name || userInCache?.username)?.[0] || 'U'}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-[13px] font-bold text-gray-800">{userInCache?.username || 'user'}</span>
+                        <span className="text-[13px] font-bold text-gray-800">{userInCache?.full_name || userInCache?.username || 'user'}</span>
                         <span className="text-[10px] text-gray-300 font-medium">{formatTimeAgo(latestInteraction.created_at)}</span>
                       </div>
                       <p className="text-[11px] text-gray-500 font-medium truncate mb-1">{latestInteraction.content}</p>
-                      <span className="text-[9px] bg-slate-50 text-slate-400 px-2 py-0.5 rounded font-black uppercase tracking-tighter">Completed</span>
+                      <span className="text-[9px] bg-slate-50 text-slate-400 px-2 py-0.5 rounded font-bold uppercase tracking-tighter">Completed</span>
                     </div>
                   </div>
                   <button
@@ -455,15 +528,15 @@ const MyWytPost: React.FC = () => {
       <div className="flex items-center justify-between py-5 border-b border-gray-100 group hover:bg-gray-50/50 transition-colors px-4 -mx-4 rounded-xl">
         <div className="flex items-center gap-4 flex-1 min-w-0">
           <div className="w-11 h-11 bg-gray-50 rounded-full flex items-center justify-center text-gray-400 font-bold shrink-0 border-2 border-white shadow-sm overflow-hidden text-sm uppercase">
-            {partner?.username?.[0] || 'U'}
+            {(partner?.full_name || partner?.username)?.[0] || 'U'}
           </div>
           <div>
             <h4 className="font-bold text-[13px] text-gray-900 leading-none mb-1">{post?.title || 'Interaction'}</h4>
             <p className="text-[11px] text-gray-400 font-medium mb-1">{timeAgo}</p>
             <p className="text-[11px] text-gray-500 font-medium truncate mb-1.5">
-              {isReply ? `Your message: ${interaction.content}` : `${partner?.username || 'user'}: ${interaction.content}`}
+              {isReply ? `Your message: ${interaction.content}` : `${partner?.full_name || partner?.username || 'user'}: ${interaction.content}`}
             </p>
-            <span className="bg-indigo-50 text-indigo-500 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">Waiting for reply</span>
+            <span className="bg-indigo-50 text-indigo-500 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-tighter">Waiting for reply</span>
           </div>
         </div>
         <button
@@ -514,11 +587,25 @@ const MyWytPost: React.FC = () => {
                 const isMine = i.user_id === currentId;
                 const partner = usersCache[i.user_id];
                 return (
-                  <div key={i.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                  <div key={i.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                    <div className="flex items-center gap-2 mb-1.5 px-1">
+                      {!isMine ? (
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                          {partner?.full_name || partner?.username || 'User'}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">You</span>
+                      )}
+                      <span className="text-[9px] text-gray-300 font-bold">{new Date(i.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
                     <div className="max-w-[80%] flex items-start gap-2">
-                      {!isMine && <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-600 uppercase shrink-0">{partner?.username?.[0] || 'U'}</div>}
+                      {!isMine && (
+                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-600 uppercase shrink-0 border border-blue-200">
+                          {(partner?.full_name || partner?.username)?.[0] || 'U'}
+                        </div>
+                      )}
                       <div className="group">
-                        <div className={`p-4 rounded-[20px] text-[13px] font-medium ${isMine ? 'bg-indigo-600 text-white rounded-br-none shadow-indigo-100 shadow-md' : 'bg-white text-gray-700 border border-gray-100 rounded-bl-none shadow-sm'}`}>
+                        <div className={`p-4 rounded-[22px] text-[13px] font-medium leading-relaxed ${isMine ? 'bg-indigo-600 text-white rounded-br-none shadow-lg shadow-indigo-100/50' : 'bg-white text-gray-700 border border-gray-200 rounded-bl-none shadow-sm'}`}>
                           {i.content}
                         </div>
                       </div>
@@ -579,9 +666,9 @@ const MyWytPost: React.FC = () => {
               className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-slate-700/50 p-1 rounded-xl transition-all"
             >
               <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-lg shadow-sm border border-blue-700/10 uppercase">
-                {currentUser?.username?.[0] || 'A'}
+                {(currentUser?.full_name || currentUser?.username)?.[0] || 'A'}
               </div>
-              <span className="font-medium text-gray-700 dark:text-gray-200 tracking-tight">{currentUser?.username || 'user'}</span>
+              <span className="font-medium text-gray-700 dark:text-gray-200 tracking-tight">{currentUser?.full_name || currentUser?.username || 'user'}</span>
               <svg className={`h-4 w-4 text-gray-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path>
               </svg>
@@ -590,8 +677,8 @@ const MyWytPost: React.FC = () => {
             {isUserMenuOpen && (
               <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-700 py-4 z-[100] animate-in fade-in slide-in-from-top-2">
                 <div className="px-6 py-4 border-b border-gray-50 dark:border-slate-700 mb-2">
-                  <p className="text-sm font-black text-gray-900 dark:text-gray-100 leading-none mb-1">{currentUser?.full_name || currentUser?.username}</p>
-                  <p className="text-[10px] font-bold text-gray-400 truncate uppercase tracking-widest">{currentUser?.email || 'User Account'}</p>
+                  <p className="text-sm font-bold text-gray-900 dark:text-gray-100 leading-none mb-1">{currentUser?.full_name || currentUser?.username}</p>
+                  <p className="text-[10px] font-semibold text-gray-400 truncate uppercase tracking-widest">{currentUser?.email || 'User Account'}</p>
                 </div>
                 {isAdmin() && (
                   <button
@@ -622,13 +709,13 @@ const MyWytPost: React.FC = () => {
             <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
             <div className="relative">
               <div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-3xl font-bold border-2 border-white/20 shadow-2xl text-white uppercase overflow-hidden">
-                {currentUser?.username?.[0] || 'A'}
+                {(currentUser?.full_name || currentUser?.username)?.[0] || 'A'}
               </div>
               <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-400 border-4 border-[#4F46E5] rounded-full shadow-lg"></div>
             </div>
             <div className="flex-1 relative z-10">
-              <h2 className="text-3xl font-bold mb-2 tracking-tight">Welcome back, {currentUser?.username || 'aysha'} ✨</h2>
-              <p className="text-white/60 text-[10px] font-black uppercase tracking-[0.2em]">Your marketplace dashboard is ready</p>
+              <h2 className="text-3xl font-bold mb-2 tracking-tight">Welcome back, {currentUser?.full_name || currentUser?.username || 'User'} ✨</h2>
+              <p className="text-white/60 text-[10px] font-bold uppercase tracking-[0.2em]">Your marketplace dashboard is ready</p>
             </div>
           </section>
 
@@ -646,7 +733,7 @@ const MyWytPost: React.FC = () => {
                     setActiveTab(tab.id as any);
                     setSubTab('');
                   }}
-                  className={`flex items-center gap-3 px-8 py-3.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 relative ${activeTab === tab.id ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xl shadow-indigo-100/50 scale-[1.02]' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                  className={`flex items-center gap-3 px-8 py-3.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all duration-300 relative ${activeTab === tab.id ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xl shadow-indigo-100/50 scale-[1.02]' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
                 >
                   {tab.label}
                   {tab.count > 0 && (
@@ -665,13 +752,13 @@ const MyWytPost: React.FC = () => {
                     <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
                   </div>
                   <div>
-                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.15em] mb-0.5">Filtering Results For</p>
+                    <p className="text-[9px] font-bold text-blue-400 uppercase tracking-[0.15em] mb-0.5">Filtering Results For</p>
                     <h4 className="text-sm font-bold text-blue-900 line-clamp-1">{filteringPost.post_type} {filteringPost.title}</h4>
                   </div>
                 </div>
                 <button
                   onClick={clearFilter}
-                  className="flex items-center gap-2 bg-white text-blue-600 px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100 shadow-sm hover:bg-blue-600 hover:text-white transition-all cursor-pointer group"
+                  className="flex items-center gap-2 bg-white text-blue-600 px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border border-blue-100 shadow-sm hover:bg-blue-600 hover:text-white transition-all cursor-pointer group"
                 >
                   <svg className="h-3 w-3 transition-transform group-hover:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   Clear Filter
@@ -718,10 +805,10 @@ const MyWytPost: React.FC = () => {
                                 {getIcon(post.title)}
                                 <div className="flex flex-col gap-1">
                                   <div className="flex items-center gap-3">
-                                    <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${post.post_type === 'NEED' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
+                                    <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest ${post.post_type === 'NEED' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
                                       {post.post_type}
                                     </span>
-                                    <span className="flex items-center gap-1.5 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                                    <span className="flex items-center gap-1.5 text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
                                       <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
                                       {timeAgo}
                                     </span>
@@ -746,13 +833,13 @@ const MyWytPost: React.FC = () => {
                                         setIsEditModalOpen(true);
                                         setMenuOpenPostId(null);
                                       }}
-                                      className="w-full text-left px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                                      className="w-full text-left px-5 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
                                     >
                                       Edit Post
                                     </button>
                                     <button
                                       onClick={() => handleDeletePost(post.id)}
-                                      className="w-full text-left px-5 py-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors flex items-center justify-between"
+                                      className="w-full text-left px-5 py-3 text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors flex items-center justify-between"
                                     >
                                       Delete
                                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -762,7 +849,7 @@ const MyWytPost: React.FC = () => {
                                         setViewingPost(post);
                                         setMenuOpenPostId(null);
                                       }}
-                                      className="w-full text-left px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-between"
+                                      className="w-full text-left px-5 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-between"
                                     >
                                       View Post
                                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -804,16 +891,53 @@ const MyWytPost: React.FC = () => {
                       </div>
                     ) : (
                       <div className="text-center py-40 bg-gray-50/50 rounded-[2.5rem] border border-dashed border-gray-200">
-                        <p className="text-xs font-black text-gray-300 uppercase tracking-widest">No matching posts</p>
+                        <p className="text-xs font-bold text-gray-300 uppercase tracking-widest">No matching posts</p>
                       </div>
                     )}
 
                     {expiredCount > 0 && (
-                      <div className="mt-12 flex justify-center pb-6">
-                        <div className="bg-red-50 text-red-500 px-6 py-2.5 rounded-full border border-red-100/50 shadow-sm flex items-center gap-2 animate-bounce cursor-pointer hover:bg-red-100 transition-all">
-                          <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse"></div>
-                          <span className="text-[10px] font-black uppercase tracking-widest">{expiredCount} Expired Posts</span>
-                        </div>
+                      <div className="mt-12 flex flex-col items-center pb-12 gap-6">
+                        <button
+                          onClick={() => setIsExpiredExpanded(!isExpiredExpanded)}
+                          className="bg-red-50 text-red-500 px-8 py-3 rounded-full border border-red-100 shadow-sm flex items-center gap-3 cursor-pointer hover:bg-red-100 transition-all group scale-105"
+                        >
+                          <div className={`w-2 h-2 rounded-full animate-pulse ${isExpiredExpanded ? 'bg-red-600' : 'bg-red-400'}`}></div>
+                          <span className="text-[11px] font-bold uppercase tracking-[0.15em]">
+                            {isExpiredExpanded ? 'Hide' : 'Show'} {expiredCount} Expired {expiredCount === 1 ? 'Post' : 'Posts'}
+                          </span>
+                          <svg className={`h-4 w-4 transition-transform duration-300 ${isExpiredExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </button>
+
+                        {isExpiredExpanded && (
+                          <div className="w-full space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
+                            {expiredPosts.map(post => (
+                              <div key={post.id} className="bg-white rounded-[2.5rem] border-2 border-red-50 p-8 shadow-sm hover:shadow-lg hover:border-red-100 transition-all group/expired relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-red-50/30 rounded-full translate-x-1/2 -translate-y-1/2 -z-0"></div>
+                                <div className="flex items-start justify-between relative z-10">
+                                  <div className="flex items-center gap-6">
+                                    <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-300 border border-gray-100">
+                                      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                                    </div>
+                                    <div>
+                                      <div className="flex items-center gap-3 mb-1">
+                                        <span className="text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest bg-gray-100 text-gray-400">EXPIRED</span>
+                                        <span className="text-[10px] text-gray-300 font-bold uppercase tracking-wider italic">Expired on {new Date(post.valid_until!).toLocaleDateString()}</span>
+                                      </div>
+                                      <h3 className="text-lg font-bold text-gray-500">{post.title}</h3>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => setRenewPostId(post.id)}
+                                    className="bg-indigo-600 text-white text-[11px] font-black px-8 py-3 rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 uppercase tracking-widest"
+                                  >
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                                    Renew Post
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -833,7 +957,7 @@ const MyWytPost: React.FC = () => {
                     ) : (
                       <div className="text-center py-40 flex flex-col items-center gap-4 opacity-30">
                         <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-4xl">🔎</div>
-                        <p className="text-xs font-black uppercase tracking-widest">No matches found</p>
+                        <p className="text-xs font-bold uppercase tracking-widest">No matches found</p>
                       </div>
                     )}
                   </div>
@@ -843,8 +967,8 @@ const MyWytPost: React.FC = () => {
                   <div className="space-y-4">
                     {!filterPostId && (
                       <div className="flex gap-4 mb-6 px-1">
-                        <button onClick={() => setSubTab('')} className={`text-[10px] font-black uppercase tracking-tighter px-4 py-2.5 rounded-xl transition-all shadow-sm ${subTab === '' ? 'bg-indigo-600 text-white shadow-indigo-100' : 'bg-gray-100 text-gray-400'}`}>My Post Responses {responsePosts.length}</button>
-                        <button onClick={() => setSubTab('replies')} className={`text-[10px] font-black uppercase tracking-tighter px-4 py-2.5 rounded-xl transition-all shadow-sm ${subTab === 'replies' ? 'bg-indigo-600 text-white shadow-indigo-100' : 'bg-gray-100 text-gray-400'}`}>My Replies {myReplies.length}</button>
+                        <button onClick={() => setSubTab('')} className={`text-[10px] font-bold uppercase tracking-tighter px-4 py-2.5 rounded-xl transition-all shadow-sm ${subTab === '' ? 'bg-indigo-600 text-white shadow-indigo-100' : 'bg-gray-100 text-gray-400'}`}>My Post Responses {responsePosts.length}</button>
+                        <button onClick={() => setSubTab('replies')} className={`text-[10px] font-bold uppercase tracking-tighter px-4 py-2.5 rounded-xl transition-all shadow-sm ${subTab === 'replies' ? 'bg-indigo-600 text-white shadow-indigo-100' : 'bg-gray-100 text-gray-400'}`}>My Replies {myReplies.length}</button>
                       </div>
                     )}
 
@@ -861,7 +985,7 @@ const MyWytPost: React.FC = () => {
                       ) : (
                         <div className="text-center py-40 flex flex-col items-center gap-4 opacity-30">
                           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-4xl">📭</div>
-                          <p className="text-xs font-black uppercase tracking-widest">No responses found</p>
+                          <p className="text-xs font-bold uppercase tracking-widest">No responses found</p>
                         </div>
                       )
                     ) : (
@@ -870,7 +994,7 @@ const MyWytPost: React.FC = () => {
                           <InteractionItem key={reply.id} interaction={reply} post={posts.find(p => p.id === reply.post_id)} isReply />
                         ))
                       ) : !loading ? (
-                        <div className="text-center py-20 text-gray-300 font-bold text-xs font-black uppercase tracking-widest">No replies yet</div>
+                        <div className="text-center py-20 text-gray-300 font-bold text-xs uppercase tracking-widest">No replies yet</div>
                       ) : null
                     )}
                   </div>
@@ -897,7 +1021,7 @@ const MyWytPost: React.FC = () => {
                     {completedSearch && (
                       <div className="px-1 mb-6 flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black uppercase text-gray-300 tracking-widest">Filtering results for:</span>
+                          <span className="text-[10px] font-bold uppercase text-gray-300 tracking-widest">Filtering results for:</span>
                           <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100/50 flex items-center gap-2">
                             {completedSearch}
                             <button onClick={() => setCompletedSearch('')} className="hover:text-emerald-800 transition-colors">✕</button>
@@ -914,7 +1038,7 @@ const MyWytPost: React.FC = () => {
                     ) : (
                       <div className="text-center py-40 flex flex-col items-center gap-5">
                         <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-3xl">🗃️</div>
-                        <p className="text-xs font-black text-gray-300 uppercase tracking-widest">
+                        <p className="text-xs font-bold text-gray-300 uppercase tracking-widest">
                           {completedSearch ? 'No completed deals match your search' : "No active deals — here are the requirements you've completed!"}
                         </p>
                       </div>
@@ -959,6 +1083,13 @@ const MyWytPost: React.FC = () => {
             setEditingPost(p);
             setIsEditModalOpen(true);
           }}
+        />
+      )}
+
+      {renewPostId && (
+        <RenewModal
+          onClose={() => setRenewPostId(null)}
+          onRenew={handleRenewPost}
         />
       )}
     </div>

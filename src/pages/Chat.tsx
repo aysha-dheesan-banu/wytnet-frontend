@@ -13,7 +13,7 @@ const Chat: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const [post, setPost] = useState<Post | null>(location.state?.post || null);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -26,7 +26,7 @@ const Chat: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
-  
+
   const currentUserId = getUserIdFromToken();
 
   const matchPostId = location.state?.matchPostId;
@@ -34,7 +34,7 @@ const Chat: React.FC = () => {
   const fetchData = async () => {
     try {
       if (!currentUserId) return;
-      
+
       const [postsRes, interactionsRes] = await Promise.all([
         getPosts(),
         getInteractions()
@@ -42,7 +42,7 @@ const Chat: React.FC = () => {
 
       const allPosts = postsRes.items || [];
       const allInteractionsGlobal = interactionsRes.items || [];
-      
+
       let foundPost = post;
       if (!foundPost) {
         foundPost = allPosts.find(p => {
@@ -54,32 +54,32 @@ const Chat: React.FC = () => {
 
       if (foundPost) {
         // Aggregate interactions from BOTH matching posts
-        const postInteractions = allInteractionsGlobal.filter(i => 
+        const postInteractions = allInteractionsGlobal.filter(i =>
           i.post_id === foundPost?.id || (matchPostId && i.post_id === matchPostId)
-        ).sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-        
+        ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
         setInteractions(postInteractions);
 
         if (!otherUser || !otherUser.username) {
-           let partnerId: string | null = null;
-           if (currentUserId === foundPost.user_id) {
-             const latestPartnerMsg = postInteractions.find(i => i.user_id !== currentUserId);
-             if (latestPartnerMsg) partnerId = latestPartnerMsg.user_id;
-           } else {
-             partnerId = foundPost.user_id;
-           }
+          let partnerId: string | null = null;
+          if (currentUserId === foundPost.user_id) {
+            const latestPartnerMsg = postInteractions.find(i => i.user_id !== currentUserId);
+            if (latestPartnerMsg) partnerId = latestPartnerMsg.user_id;
+          } else {
+            partnerId = foundPost.user_id;
+          }
 
-           if (partnerId) {
-             const interactionPartner = postInteractions.find(i => i.user_id === partnerId && i.user?.username);
-             if (interactionPartner && interactionPartner.user) {
-               setOtherUser(interactionPartner.user as User);
-             } else {
-               const partnerProfileRes = await getUserById(partnerId);
-               if (partnerProfileRes.item) {
-                 setOtherUser(partnerProfileRes.item as User);
-               }
-             }
-           }
+          if (partnerId) {
+            const interactionPartner = postInteractions.find(i => i.user_id === partnerId && i.user?.username);
+            if (interactionPartner && interactionPartner.user) {
+              setOtherUser(interactionPartner.user as User);
+            } else {
+              const partnerProfileRes = await getUserById(partnerId);
+              if (partnerProfileRes.item) {
+                setOtherUser(partnerProfileRes.item as User);
+              }
+            }
+          }
         }
       }
 
@@ -149,7 +149,9 @@ const Chat: React.FC = () => {
   const chatMessages = interactions.filter(i => i.action_type === 'CHAT' || i.action_type === 'RESPONSE');
 
   const getOtherName = () => {
+    if (otherUser?.full_name) return otherUser.full_name;
     if (otherUser?.username) return otherUser.username;
+    if (post && post.user_id !== currentUserId && post.user?.full_name) return post.user.full_name;
     if (post && post.user_id !== currentUserId && post.user?.username) return post.user.username;
     return 'user';
   };
@@ -161,7 +163,7 @@ const Chat: React.FC = () => {
           <Logo size="md" />
         </div>
         <div className="flex items-center gap-6">
-          <button 
+          <button
             onClick={toggleTheme}
             className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
           >
@@ -177,14 +179,14 @@ const Chat: React.FC = () => {
           </button>
           <NotificationDropdown />
           <div className="flex items-center gap-3 pl-4 border-l border-gray-200 dark:border-slate-700 relative" ref={userMenuRef}>
-            <button 
+            <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
               className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-slate-700/50 p-1 rounded-xl transition-all"
             >
               <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-lg shadow-sm border border-blue-700/10 uppercase">
-                {currentUser?.username?.[0] || 'A'}
+                {(currentUser?.full_name || currentUser?.username)?.[0] || 'A'}
               </div>
-              <span className="font-medium text-gray-700 dark:text-gray-200 tracking-tight">{currentUser?.username || 'user'}</span>
+              <span className="font-medium text-gray-700 dark:text-gray-200 tracking-tight">{currentUser?.full_name || currentUser?.username || 'user'}</span>
               <svg className={`h-4 w-4 text-gray-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path>
               </svg>
@@ -196,7 +198,7 @@ const Chat: React.FC = () => {
                   <p className="text-sm font-black text-gray-900 dark:text-gray-100 leading-none mb-1">{currentUser?.full_name || currentUser?.username}</p>
                   <p className="text-[10px] font-bold text-gray-400 truncate uppercase tracking-widest">{currentUser?.email || 'User Account'}</p>
                 </div>
-                <button 
+                <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-6 py-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all font-bold text-xs uppercase tracking-widest text-left"
                 >
@@ -223,8 +225,8 @@ const Chat: React.FC = () => {
               <div className="p-4 border-b border-gray-50 flex items-center justify-between shrink-0 bg-white">
                 <div className="flex items-center gap-3">
                   {/* Avatar: Soft rounded square square from Reference */}
-                  <div className="w-11 h-11 bg-blue-50 rounded-[14px] flex items-center justify-center text-blue-500 font-bold shrink-0 shadow-sm border border-blue-100/30 text-lg">
-                    {otherUser?.username?.[0]?.toUpperCase() || post?.user?.username?.[0]?.toUpperCase() || 'H'}
+                  <div className="w-11 h-11 bg-blue-50 rounded-[14px] flex items-center justify-center text-blue-500 font-bold shrink-0 shadow-sm border border-blue-100/30 text-lg uppercase">
+                    {(otherUser?.full_name || otherUser?.username || post?.user?.full_name || post?.user?.username)?.[0] || 'H'}
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-bold text-[15px] text-gray-900 truncate leading-tight">{post?.title || 'Loading...'}</h3>
@@ -243,20 +245,20 @@ const Chat: React.FC = () => {
 
               {/* Tabs with switcher */}
               <div className="flex px-4 pt-4 gap-8 border-b border-gray-50 shrink-0">
-                 <button 
+                <button
                   onClick={() => setActiveTab('CHAT')}
                   className={`pb-3 font-bold text-[10px] uppercase tracking-widest flex items-center gap-1.5 transition-all relative ${activeTab === 'CHAT' ? 'text-indigo-600' : 'text-gray-300 hover:text-gray-500'}`}
-                 >
-                   <span className="text-sm">💬</span> CHAT
-                   {activeTab === 'CHAT' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full"></span>}
-                 </button>
-                 <button 
+                >
+                  <span className="text-sm">💬</span> CHAT
+                  {activeTab === 'CHAT' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full"></span>}
+                </button>
+                <button
                   onClick={() => setActiveTab('HISTORY')}
                   className={`pb-3 font-bold text-[10px] uppercase tracking-widest flex items-center transition-all relative ${activeTab === 'HISTORY' ? 'text-indigo-600' : 'text-gray-300 hover:text-gray-500'}`}
-                 >
-                   HISTORY
-                   {activeTab === 'HISTORY' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full"></span>}
-                 </button>
+                >
+                  HISTORY
+                  {activeTab === 'HISTORY' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full"></span>}
+                </button>
               </div>
 
               {/* Messages Area */}
@@ -264,7 +266,7 @@ const Chat: React.FC = () => {
                 {activeTab === 'CHAT' ? (
                   <div className="flex-1 flex flex-col h-full">
                     <div className="flex justify-center mb-8">
-                       <span className="text-[8px] bg-slate-50 text-slate-300 tracking-tighter px-3 py-1 rounded-full uppercase font-black">Today</span>
+                      <span className="text-[8px] bg-slate-50 text-slate-300 tracking-tighter px-3 py-1 rounded-full uppercase font-black">Today</span>
                     </div>
                     {chatMessages.length > 0 ? (
                       <div className="flex flex-col space-y-6 min-h-0">
@@ -287,8 +289,8 @@ const Chat: React.FC = () => {
                       </div>
                     ) : (
                       <div className="flex-1 flex flex-col items-center justify-center py-20 opacity-30">
-                         <span className="text-4xl mb-4">💬</span>
-                         <p className="text-[10px] font-black uppercase tracking-widest">No messages yet</p>
+                        <span className="text-4xl mb-4">💬</span>
+                        <p className="text-[10px] font-black uppercase tracking-widest">No messages yet</p>
                       </div>
                     )}
                     <div ref={messagesEndRef} className="h-4" />
@@ -299,11 +301,11 @@ const Chat: React.FC = () => {
                     {chatMessages.length > 0 ? (
                       [...chatMessages].reverse().map((msg) => (
                         <div key={msg.id} className="bg-gray-50/50 p-5 rounded-[20px] border border-gray-100 shadow-sm">
-                           <p className="text-[9px] text-gray-300 font-black uppercase tracking-widest mb-2 flex justify-between items-center">
-                              <span>{new Date(msg.created_at).toLocaleString([], { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                              <span className="text-[7px] bg-white px-2 py-0.5 rounded-full border border-gray-100">{msg.user?.username || (msg.user_id === currentUserId ? currentUser?.username : (otherUser?.username || 'user'))}</span>
-                           </p>
-                           <p className="text-[13px] text-gray-600 font-medium leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                          <p className="text-[9px] text-gray-300 font-black uppercase tracking-widest mb-2 flex justify-between items-center">
+                            <span>{new Date(msg.created_at).toLocaleString([], { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                            <span className="text-[7px] bg-white px-2 py-0.5 rounded-full border border-gray-100">{msg.user?.full_name || msg.user?.username || (msg.user_id === currentUserId ? (currentUser?.full_name || currentUser?.username) : (otherUser?.full_name || otherUser?.username || 'user'))}</span>
+                          </p>
+                          <p className="text-[13px] text-gray-600 font-medium leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                         </div>
                       ))
                     ) : (
@@ -318,8 +320,8 @@ const Chat: React.FC = () => {
               {/* Input Area */}
               <div className="p-4 bg-white border-t border-gray-50 shrink-0">
                 <form onSubmit={handleSendMessage} className="relative flex items-center gap-2 h-14 bg-white rounded-[28px] px-2 border border-gray-100 shadow-sm group transition-all">
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     placeholder="Write a message..."
@@ -330,7 +332,7 @@ const Chat: React.FC = () => {
                     <button type="button" className="w-10 h-10 rounded-full flex items-center justify-center text-gray-300 hover:text-gray-400 transition-colors">
                       <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.414a4 4 0 00-5.656-5.656l-6.415 6.414a6 6 0 108.486 8.486L20.5 13" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                     </button>
-                    <button 
+                    <button
                       type="submit"
                       disabled={sending || !message.trim() || !currentUserId}
                       className={`w-10 h-10 rounded-full flex items-center justify-center text-white transition-all ${message.trim() ? 'bg-indigo-600 shadow-lg shadow-indigo-100' : 'bg-gray-200'}`}

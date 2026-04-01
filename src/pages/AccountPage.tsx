@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import { useTheme } from '../context/ThemeContext';
 import Logo from '../components/Logo';
 import Sidebar from '../components/Sidebar';
@@ -98,7 +99,7 @@ const AccountPage: React.FC = () => {
       setIsUsernameModalOpen(false);
     } catch (err) {
       console.error("Failed to update username", err);
-      alert("Failed to update username. Please try again.");
+      toast.error("Failed to update username. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -111,10 +112,10 @@ const AccountPage: React.FC = () => {
       await updateProfile({ password: newPassword } as any);
       setIsPasswordModalOpen(false);
       setNewPassword('');
-      alert("Password updated successfully!");
+      toast.success("Password updated successfully!");
     } catch (err) {
       console.error("Failed to update password", err);
-      alert("Failed to update password. Please try again.");
+      toast.error("Failed to update password. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -229,9 +230,9 @@ const AccountPage: React.FC = () => {
               className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-slate-700/50 p-1 rounded-xl transition-all"
             >
               <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-lg shadow-sm border border-blue-700/10 uppercase">
-                {user?.username?.[0] || 'A'}
+                {(user?.full_name || user?.username)?.[0] || 'A'}
               </div>
-              <span className="font-medium text-gray-700 dark:text-gray-200 tracking-tight">{user?.username || 'user'}</span>
+              <span className="font-medium text-gray-700 dark:text-gray-200 tracking-tight">{user?.full_name || user?.username || 'user'}</span>
               <svg className={`h-4 w-4 text-gray-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path>
               </svg>

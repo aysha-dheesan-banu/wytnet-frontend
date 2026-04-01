@@ -102,7 +102,7 @@ const Dashboard: React.FC = () => {
       const enrichedPosts = rawPosts.map(post => ({
         ...post,
         user: userMap[post.user_id]
-      }));
+      })).sort((a: Post, b: Post) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       setPosts(enrichedPosts);
     } catch (error) {
@@ -131,10 +131,16 @@ const Dashboard: React.FC = () => {
   }, [isFilterOpen]);
 
   const filteredPosts = posts.filter(post => {
-    // Universal Filter: Exclude completed requirements
+    // Universal Filter: Exclude completed and expired posts
     const savedCompleted = localStorage.getItem('wytnet_completed_posts');
     const completedIds = savedCompleted ? Object.keys(JSON.parse(savedCompleted)) : [];
     if (completedIds.includes(post.id)) return false;
+
+    // Expiry Filter
+    if (post.valid_until && new Date(post.valid_until) < new Date()) return false;
+
+    // Privacy Filter: Only show public posts on the WytWall
+    if (post.is_public === false) return false;
 
     // Search Filter
     if (searchQuery && !post.title.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -185,10 +191,10 @@ const Dashboard: React.FC = () => {
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
               className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-slate-700/50 p-1 rounded-xl transition-all"
             >
-              <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
-                {user?.username?.[0]?.toUpperCase() || 'A'}
+              <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold uppercase">
+                {(user?.full_name || user?.username)?.[0] || 'A'}
               </div>
-              <span className="font-medium dark:text-gray-200">{user?.username || 'User'}</span>
+              <span className="font-medium dark:text-gray-200">{user?.full_name || user?.username || 'User'}</span>
               <svg className={`h-4 w-4 text-gray-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path>
               </svg>
@@ -197,13 +203,13 @@ const Dashboard: React.FC = () => {
             {isUserMenuOpen && (
               <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-700 py-4 z-[100] animate-in fade-in slide-in-from-top-2">
                 <div className="px-6 py-4 border-b border-gray-50 dark:border-slate-700 mb-2">
-                  <p className="text-sm font-black text-gray-900 dark:text-gray-100 leading-none mb-1">{user?.full_name || user?.username}</p>
-                  <p className="text-[10px] font-bold text-gray-400 truncate uppercase tracking-widest">{user?.email || 'User Account'}</p>
+                  <p className="text-sm font-bold text-gray-900 dark:text-gray-100 leading-none mb-1">{user?.full_name || user?.username}</p>
+                  <p className="text-[10px] font-semibold text-gray-400 truncate uppercase tracking-widest">{user?.email || 'User Account'}</p>
                 </div>
                 {isAdmin() && (
                   <button
                     onClick={() => navigate('/admin')}
-                    className="w-full flex items-center gap-3 px-6 py-3 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all font-bold text-xs uppercase tracking-widest text-left"
+                    className="w-full flex items-center gap-3 px-6 py-3 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all font-semibold text-xs uppercase tracking-widest text-left"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                     Admin Panel
@@ -211,7 +217,7 @@ const Dashboard: React.FC = () => {
                 )}
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-6 py-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all font-bold text-xs uppercase tracking-widest text-left"
+                  className="w-full flex items-center gap-3 px-6 py-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all font-semibold text-xs uppercase tracking-widest text-left"
                 >
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   Logout
@@ -230,20 +236,20 @@ const Dashboard: React.FC = () => {
             {/* Welcome Banner */}
             <section className="bg-wyt-card-gradient rounded-2xl p-6 mb-6 flex items-center gap-8 text-white relative shadow-lg shadow-indigo-200">
               <div className="relative">
-                <div className="w-16 h-16 bg-blue-800/50 rounded-full flex items-center justify-center text-3xl font-bold border-4 border-white/20">
-                  {user?.username?.[0]?.toLowerCase() || 'a'}
+                <div className="w-16 h-16 bg-blue-800/50 rounded-full flex items-center justify-center text-3xl font-bold border-4 border-white/20 uppercase">
+                  {(user?.full_name || user?.username)?.[0] || 'A'}
                 </div>
                 <div className="absolute bottom-0 right-0 w-5 h-5 bg-white rounded-full flex items-center justify-center">
                   <div className="w-3 h-3 bg-green-500 rounded-full"></div>
                 </div>
               </div>
               <div className="flex-1">
-                <h2 className="text-xl font-bold mb-0.5">Welcome back, {user?.username || 'User'} ✨</h2>
+                <h2 className="text-xl font-bold mb-0.5">Welcome back, {user?.full_name || user?.username || 'User'} ✨</h2>
                 <p className="text-white/80 mb-4 text-sm">Connect with the community!</p>
                 <div className="w-full max-w-2xl">
                   <div className="flex justify-between text-[10px] mb-1">
                     <span></span>
-                    <span className="font-bold">{completion}% profile</span>
+                    <span className="font-semibold">{completion}% profile</span>
                   </div>
                   <div className="h-1.5 w-full bg-white/20 rounded-full">
                     <div className="h-full bg-cyan-400 rounded-full shadow-[0_0_10px_rgba(34,211,238,0.8)]" style={{ width: `${completion}%` }}></div>
@@ -282,11 +288,6 @@ const Dashboard: React.FC = () => {
                 />
               </div>
               <div className="flex gap-2 relative">
-                <button className="p-3 bg-wyt-primary text-white rounded-xl shadow-lg shadow-indigo-200 dark:shadow-indigo-900/50">
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path>
-                  </svg>
-                </button>
                 <div className="relative" ref={filterRef}>
                   <button
                     onClick={() => setIsFilterOpen(!isFilterOpen)}
@@ -297,7 +298,7 @@ const Dashboard: React.FC = () => {
 
                   {isFilterOpen && (
                     <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-gray-100 dark:border-slate-700 p-5 z-[60] animate-in fade-in zoom-in duration-200 origin-top-right">
-                      <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">Filter by Location</p>
+                      <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">Filter by Location</p>
                       <div className="relative">
                         <svg className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                           <path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path>

@@ -21,7 +21,6 @@ const Login: React.FC = () => {
   const [regWhatsApp, setRegWhatsApp] = useState<string>('');
   const [regPassword, setRegPassword] = useState<string>('');
   const [regConfirmPassword, setRegConfirmPassword] = useState<string>('');
-  const [isDeveloper, setIsDeveloper] = useState<boolean>(false);
 
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
@@ -74,7 +73,7 @@ const Login: React.FC = () => {
         email: regEmail,
         phone: regWhatsApp,
         password: regPassword,
-        role: isDeveloper ? 'developer' : 'user'
+        role: 'user'
       });
       await login(regEmail, regPassword);
       navigate('/dashboard');
@@ -249,18 +248,7 @@ const Login: React.FC = () => {
                   required
                 />
               </div>
-              <div className="flex items-center gap-2.5 py-1">
-                <input
-                  type="checkbox"
-                  id="dev-check"
-                  checked={isDeveloper}
-                  onChange={(e) => setIsDeveloper(e.target.checked)}
-                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300"
-                />
-                <label htmlFor="dev-check" className="text-[9px] font-black text-gray-400 uppercase tracking-widest cursor-pointer">
-                  Register as Developer
-                </label>
-              </div>
+
               <button
                 type="submit"
                 disabled={loading}
@@ -280,7 +268,7 @@ const Login: React.FC = () => {
           </div>
 
           {/* Social Buttons */}
-          <div className="flex justify-center w-full mt-4">
+          <div className="flex justify-center w-full mt-4 scale-110">
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
               onError={() => {
@@ -289,7 +277,7 @@ const Login: React.FC = () => {
               theme="outline"
               shape="pill"
               size="large"
-              width="100%"
+              width="380px"
             />
           </div>
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import { Post, Interaction, User } from '../api/types';
 import { createInteraction, getInteractions, getInteractionsByPost } from '../api/interaction';
 import { incrementPostView } from '../api/post';
@@ -150,7 +151,7 @@ const PostCard: React.FC<PostCardProps> = ({
       setShowFollowMenu(false);
     } catch (error) {
       console.error('Unfollow failed:', error);
-      alert('Failed to unfollow user. Please try again.');
+      toast.error('Failed to unfollow user. Please try again.');
     }
   };
 
@@ -197,21 +198,21 @@ const PostCard: React.FC<PostCardProps> = ({
   };
 
   return (
-    <article className="bg-white dark:bg-slate-800 rounded-[2rem] p-5 border border-gray-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+    <article className="bg-white dark:bg-slate-800 rounded-[1.5rem] p-4 border border-gray-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
       <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-indigo-100/50 dark:group-hover:bg-indigo-900/20 transition-colors"></div>
       <div className="p-1 pb-1">
         <div className="flex items-start justify-between mb-2">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-wyt-primary font-bold text-base">
-              {user?.username?.[0]?.toUpperCase() || 'U'}
+            <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-wyt-primary font-bold text-sm uppercase">
+              {(user?.full_name || user?.username)?.[0] || 'U'}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="font-bold text-base text-gray-900">{user?.username || 'User'}</h4>
+                <h4 className="font-semibold text-sm text-gray-900">{user?.full_name || user?.username || 'User'}</h4>
                 <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wide ${post_type === 'NEED' ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-600'}`}>
                   I {post_type === 'NEED' ? 'Need' : 'Offer'}
                 </span>
-                <span className="text-[9px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-bold uppercase">Active</span>
+                <span className="text-[9px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-semibold uppercase">Active</span>
               </div>
               <div className="flex items-center gap-3 mt-0.5 text-[10px] text-gray-400">
                 <span className="flex items-center gap-1">📍 {location}</span>
@@ -255,8 +256,8 @@ const PostCard: React.FC<PostCardProps> = ({
         <div className="flex gap-4 mb-2">
           <div className="flex-1 flex flex-col justify-between min-h-[80px] cursor-pointer" onClick={() => setIsViewModalOpen(true)}>
             <div>
-              <h5 className="text-base font-bold mb-1 text-gray-900 leading-snug hover:text-indigo-600 transition-colors">{title}</h5>
-              <p className="text-gray-500 text-[11px] leading-relaxed line-clamp-2">{description || content || 'No description provided'}</p>
+              <h5 className="text-sm font-semibold mb-1 text-gray-900 leading-snug hover:text-indigo-600 transition-colors">{title}</h5>
+              <p className="text-gray-500 text-[10px] leading-relaxed line-clamp-2">{description || content || 'No description provided'}</p>
             </div>
 
             <div className="flex items-center gap-5 mt-2 pt-2 border-t border-gray-50">
@@ -282,24 +283,20 @@ const PostCard: React.FC<PostCardProps> = ({
                 <span className="text-base">👁️</span>
                 <span>Views {viewCount}</span>
               </div>
-              <button
-                disabled={post.allow_share === false}
-                className={`flex items-center gap-1.5 text-gray-400 hover:text-gray-600 transition-colors text-[11px] ${post.allow_share === false ? 'opacity-30 cursor-not-allowed grayscale' : ''}`}
-                title={post.allow_share === false ? "Sharing is disabled for this post" : ""}
-              >
-                <span className="text-base">🔗</span>
-                <span>Share</span>
-              </button>
+
             </div>
           </div>
 
           {image_url && !imgError && (
             <div className="w-[120px] h-[80px] shrink-0 rounded-2xl overflow-hidden border border-gray-100 shadow-sm self-start">
               <img
-                src={image_url.startsWith('http') ? image_url : `http://localhost:8000/${image_url}`}
+                src={image_url.startsWith('http') ? image_url : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}${image_url.startsWith('/') ? '' : '/'}${image_url}`}
                 alt="Post"
                 className="w-full h-full object-cover"
-                onError={() => setImgError(true)}
+                onError={() => {
+                  console.warn('Post image failed to load:', image_url);
+                  setImgError(true);
+                }}
               />
             </div>
           )}
@@ -308,7 +305,7 @@ const PostCard: React.FC<PostCardProps> = ({
         <button
           onClick={() => handleAction(post_type === 'NEED' ? 'OFFER' : 'NEED')}
           disabled={post.allow_response === false}
-          className={`w-full text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.98] text-sm ${post_type === 'NEED' ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-50' : 'bg-wyt-primary hover:bg-indigo-700 shadow-indigo-100'} ${post.allow_response === false ? 'opacity-30 cursor-not-allowed grayscale' : ''}`}
+          className={`w-full text-white py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.98] text-sm ${post_type === 'NEED' ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-50' : 'bg-wyt-primary hover:bg-indigo-700 shadow-indigo-100'} ${post.allow_response === false ? 'opacity-30 cursor-not-allowed grayscale' : ''}`}
           title={post.allow_response === false ? "Responses are disabled for this post" : ""}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -324,14 +321,14 @@ const PostCard: React.FC<PostCardProps> = ({
                 <div key={comment.id} className="flex gap-3 group">
                   <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm shrink-0 border border-white shadow-sm overflow-hidden">
                     {comment.user?.avatar_url ? (
-                      <img src={comment.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                      <img src={comment.user.avatar_url.startsWith('http') ? comment.user.avatar_url : `http://localhost:8000${comment.user.avatar_url.startsWith('/') ? '' : '/'}${comment.user.avatar_url}`} alt="" className="w-full h-full object-cover" />
                     ) : (
                       comment.user?.username?.[0]?.toUpperCase() || 'U'
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="font-bold text-xs text-slate-900 truncate">{comment.user?.username || 'User'}</span>
+                      <span className="font-semibold text-xs text-slate-900 truncate">{comment.user?.username || 'User'}</span>
                       <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap">{new Date(comment.created_at).toLocaleDateString()}</span>
                     </div>
                     <div className="bg-slate-50 p-3 rounded-2xl rounded-tl-none border border-slate-100 shadow-sm">

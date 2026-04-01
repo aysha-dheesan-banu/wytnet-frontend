@@ -41,7 +41,7 @@ const ViewPostModal: React.FC<ViewPostModalProps> = ({ post: initialPost, onClos
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-wyt-primary font-bold overflow-hidden border-2 border-white shadow-sm">
                             {post.user?.avatar_url ? (
-                                <img src={post.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                                <img src={post.user.avatar_url.startsWith('http') ? post.user.avatar_url : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}${post.user.avatar_url.startsWith('/') ? '' : '/'}${post.user.avatar_url}`} alt="" className="w-full h-full object-cover" />
                             ) : (
                                 post.user?.username?.[0]?.toUpperCase() || 'U'
                             )}
@@ -84,6 +84,17 @@ const ViewPostModal: React.FC<ViewPostModalProps> = ({ post: initialPost, onClos
                             Expires on <span className="text-red-500">{formatDate(post.valid_until)}</span>
                         </p>
                     </div>
+
+                    {/* Post Image */}
+                    {post.image_url && (
+                        <div className="mb-6 rounded-[2rem] overflow-hidden border border-slate-100 shadow-sm">
+                            <img
+                                src={post.image_url.startsWith('http') ? post.image_url : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}${post.image_url.startsWith('/') ? '' : '/'}${post.image_url}`}
+                                alt="Post content"
+                                className="w-full h-auto max-h-[300px] object-cover"
+                            />
+                        </div>
+                    )}
 
                     <div className="bg-[#fff1f2] dark:bg-rose-950/30 rounded-3xl p-6 mb-6 border border-rose-100/50 dark:border-rose-900/20 shadow-sm relative group">
                         <h3 className={`text-lg font-black text-slate-900 dark:text-rose-50 leading-tight ${cleanContent ? 'mb-2' : ''}`}>{post.title}</h3>

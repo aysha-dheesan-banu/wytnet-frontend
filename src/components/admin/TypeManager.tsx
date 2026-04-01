@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
 import { getObjectTypes, createObjectType, updateObjectType, deleteObjectType } from '../../api/object';
 import { ObjectType } from '../../api/types';
 import ConfirmModal from './ConfirmModal';
+import Pagination from './Pagination';
 
 interface TypeManagerProps {
   createTrigger: number;
@@ -12,6 +14,8 @@ interface TypeManagerProps {
 const TypeManager: React.FC<TypeManagerProps> = ({ createTrigger, onTriggerHandled }) => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingType, setEditingType] = useState<ObjectType | null>(null);
   const [formData, setFormData] = useState({
@@ -62,7 +66,7 @@ const TypeManager: React.FC<TypeManagerProps> = ({ createTrigger, onTriggerHandl
       setFormData({ name: '', slug: '', description: '', icon: '' });
     },
     onError: () => {
-      alert('Error saving object type');
+      toast.error('Error saving object type');
     }
   });
 
@@ -73,7 +77,7 @@ const TypeManager: React.FC<TypeManagerProps> = ({ createTrigger, onTriggerHandl
       setConfirmState(prev => ({ ...prev, isOpen: false }));
     },
     onError: () => {
-      alert('Error deleting object type');
+      toast.error('Error deleting object type');
     }
   });
 
@@ -103,11 +107,22 @@ const TypeManager: React.FC<TypeManagerProps> = ({ createTrigger, onTriggerHandl
     }
   };
 
-  const filteredTypes = types.filter(t => 
-    t.name.toLowerCase().includes(search.toLowerCase()) || 
+  const filteredTypes = types.filter(t =>
+    t.name.toLowerCase().includes(search.toLowerCase()) ||
     t.slug?.toLowerCase().includes(search.toLowerCase()) ||
     t.description?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const totalPages = Math.ceil(filteredTypes.length / itemsPerPage);
+  const paginatedTypes = filteredTypes.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Reset to page 1 on search
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
 
   const stats = [
     { label: 'Total Types', value: types.length, icon: 'category' },
@@ -122,9 +137,9 @@ const TypeManager: React.FC<TypeManagerProps> = ({ createTrigger, onTriggerHandl
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {stats.map((stat, i) => (
           <div key={i} className="p-6 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-3xl shadow-sm hover:shadow-md transition-all">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">{stat.label}</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">{stat.label}</p>
             <div className="flex items-end justify-between">
-              <h3 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter">{stat.value}</h3>
+              <h3 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tighter">{stat.value}</h3>
               <div className="w-10 h-10 bg-gray-50 dark:bg-slate-900 rounded-xl flex items-center justify-center text-gray-400">
                 <span className="material-icons">{stat.icon}</span>
               </div>
@@ -136,19 +151,19 @@ const TypeManager: React.FC<TypeManagerProps> = ({ createTrigger, onTriggerHandl
       {/* Filter Bar */}
       <div className="flex flex-wrap items-center gap-3 mb-6 bg-gray-50/50 dark:bg-slate-900/30 p-2 rounded-2xl border border-gray-100 dark:border-slate-800">
         <div className="relative flex-1 min-w-[200px]">
-          <input 
-            type="text" 
-            placeholder="Search types by name, slug or description..." 
+          <input
+            type="text"
+            placeholder="Search types by name, slug or description..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-sm focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all dark:text-white"
           />
           <span className="material-icons absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">search</span>
         </div>
-        
+
         <div className="flex gap-1 ml-auto">
-           <button className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"><span className="material-icons">chevron_left</span></button>
-           <button className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"><span className="material-icons">chevron_right</span></button>
+          <button className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"><span className="material-icons">chevron_left</span></button>
+          <button className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"><span className="material-icons">chevron_right</span></button>
         </div>
       </div>
 
@@ -157,11 +172,11 @@ const TypeManager: React.FC<TypeManagerProps> = ({ createTrigger, onTriggerHandl
         <table className="w-full text-left font-sans">
           <thead className="bg-gray-50 dark:bg-slate-900 border-b border-gray-100 dark:border-slate-700">
             <tr>
-              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest w-24">Icon</th>
-              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Category</th>
-              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Slug</th>
-              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Description</th>
-              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+              <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest w-24">Icon</th>
+              <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Category</th>
+              <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Slug</th>
+              <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Description</th>
+              <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50 dark:divide-slate-700/50">
@@ -181,7 +196,7 @@ const TypeManager: React.FC<TypeManagerProps> = ({ createTrigger, onTriggerHandl
                 </td>
               </tr>
             ) : (
-              filteredTypes.map(type => (
+              paginatedTypes.map(type => (
                 <tr key={type.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/20 transition-all group">
                   <td className="px-8 py-5">
                     <div className="w-12 h-12 bg-indigo-50 dark:bg-slate-900 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform shadow-inner overflow-hidden border border-indigo-100/50 dark:border-slate-700">
@@ -193,7 +208,7 @@ const TypeManager: React.FC<TypeManagerProps> = ({ createTrigger, onTriggerHandl
                     </div>
                   </td>
                   <td className="px-8 py-5">
-                    <div className="text-sm font-black text-gray-900 dark:text-white tracking-tight uppercase">{type.name}</div>
+                    <div className="text-sm font-bold text-gray-900 dark:text-white tracking-tight uppercase">{type.name}</div>
                   </td>
                   <td className="px-8 py-5">
                     <span className="px-3 py-1 bg-gray-100 dark:bg-slate-900 text-gray-500 rounded-lg text-[10px] font-mono border border-gray-200 dark:border-slate-700">
@@ -207,15 +222,15 @@ const TypeManager: React.FC<TypeManagerProps> = ({ createTrigger, onTriggerHandl
                   </td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex justify-end gap-2">
-                      <button 
-                        onClick={() => handleEdit(type)} 
+                      <button
+                        onClick={() => handleEdit(type)}
                         className="p-2.5 text-gray-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-slate-900 rounded-xl transition-all shadow-none hover:shadow-lg shadow-indigo-100"
                         title="Edit Type"
                       >
                         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" strokeWidth="2.5" /></svg>
                       </button>
-                      <button 
-                        onClick={() => handleDelete(type.id, type.name)} 
+                      <button
+                        onClick={() => handleDelete(type.id, type.name)}
                         className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-white dark:hover:bg-slate-900 rounded-xl transition-all shadow-none hover:shadow-lg shadow-red-100"
                         title="Delete Category"
                       >
@@ -228,71 +243,78 @@ const TypeManager: React.FC<TypeManagerProps> = ({ createTrigger, onTriggerHandl
             )}
           </tbody>
         </table>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          totalItems={filteredTypes.length}
+          itemsPerPage={itemsPerPage}
+        />
       </div>
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
           <div className="relative w-full max-w-md bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-8 border border-gray-100 dark:border-slate-700 animate-in fade-in zoom-in duration-200">
-            <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-6">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white uppercase tracking-tight mb-6">
               {editingType ? 'Edit' : 'New'} Type
             </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1.5 ml-1">Icon (Emoji)</label>
-                <input 
-                  type="text" 
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-1.5 ml-1">Icon (Emoji)</label>
+                <input
+                  type="text"
                   value={formData.icon}
-                  onChange={(e) => setFormData({...formData, icon: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
                   placeholder="e.g. 📦 or ⚙️"
                   className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl text-lg focus:ring-2 focus:ring-wyt-primary/20 outline-none transition-all dark:text-white"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1.5 ml-1">Name</label>
-                <input 
-                  type="text" 
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-1.5 ml-1">Name</label>
+                <input
+                  type="text"
                   value={formData.name}
                   onChange={(e) => {
                     const newName = e.target.value;
                     const newSlug = newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-                    setFormData({...formData, name: newName, slug: editingType ? formData.slug : newSlug});
+                    setFormData({ ...formData, name: newName, slug: editingType ? formData.slug : newSlug });
                   }}
                   required
                   className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-wyt-primary/20 outline-none transition-all dark:text-white"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1.5 ml-1">Slug (Identifier)</label>
-                <input 
-                  type="text" 
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-1.5 ml-1">Slug (Identifier)</label>
+                <input
+                  type="text"
                   value={formData.slug}
-                  onChange={(e) => setFormData({...formData, slug: e.target.value.toLowerCase().replace(/\s+/g, '-')})}
+                  onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
                   required
                   placeholder="e.g. vehicle-type"
                   className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-mono focus:ring-2 focus:ring-wyt-primary/20 outline-none transition-all dark:text-white"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1.5 ml-1">Description</label>
-                <textarea 
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-1.5 ml-1">Description</label>
+                <textarea
                   value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
-                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-wyt-primary/20 outline-none transition-all dark:text-white"
+                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-wyt-primary/20 outline-none transition-all dark:text-white"
                 />
               </div>
               <div className="pt-4 flex gap-3">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 py-3 text-gray-500 font-bold text-xs uppercase tracking-widest hover:bg-gray-50 dark:hover:bg-slate-700 rounded-xl transition-all"
+                  className="flex-1 py-3 text-gray-500 font-semibold text-xs uppercase tracking-widest hover:bg-gray-50 dark:hover:bg-slate-700 rounded-xl transition-all"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
-                  className="flex-1 py-3 bg-wyt-primary text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-transform active:scale-95 shadow-lg shadow-indigo-100 dark:shadow-none"
+                  className="flex-1 py-3 bg-wyt-primary text-white font-semibold text-xs uppercase tracking-widest rounded-xl transition-transform active:scale-95 shadow-lg shadow-indigo-100 dark:shadow-none"
                 >
                   Save Changes
                 </button>
@@ -303,7 +325,7 @@ const TypeManager: React.FC<TypeManagerProps> = ({ createTrigger, onTriggerHandl
       )}
 
       {/* Branded Confirmation Modal */}
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={confirmState.isOpen}
         onClose={() => setConfirmState({ ...confirmState, isOpen: false })}
         onConfirm={handleConfirmDelete}

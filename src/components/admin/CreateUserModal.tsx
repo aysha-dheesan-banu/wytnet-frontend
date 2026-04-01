@@ -13,7 +13,7 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onCo
         email: '',
         full_name: '',
         password: '',
-        is_superuser: false,
+        role: 'user',
         is_active: true
     });
 
@@ -30,8 +30,8 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onCo
                 <div className="p-8">
                     <div className="flex justify-between items-start mb-6">
                         <div>
-                            <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Add New User</h3>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Create a user account manually</p>
+                            <h3 className="text-xl font-bold text-gray-900 dark:text-white uppercase tracking-tight">Add New User</h3>
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mt-1">Create a user account manually</p>
                         </div>
                         <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors text-gray-400">
                             <span className="material-icons">close</span>
@@ -40,7 +40,7 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onCo
 
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Username</label>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Username</label>
                             <input
                                 required
                                 type="text"
@@ -52,7 +52,7 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onCo
                         </div>
 
                         <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Email address</label>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Email address</label>
                             <input
                                 required
                                 type="email"
@@ -64,7 +64,7 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onCo
                         </div>
 
                         <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Full Name</label>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Full Name</label>
                             <input
                                 type="text"
                                 value={formData.full_name}
@@ -75,7 +75,7 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onCo
                         </div>
 
                         <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Password</label>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Password</label>
                             <input
                                 required
                                 type="password"
@@ -90,11 +90,11 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onCo
                             <label className="flex items-center gap-2 cursor-pointer group">
                                 <input
                                     type="checkbox"
-                                    checked={formData.is_superuser}
-                                    onChange={e => setFormData({ ...formData, is_superuser: e.target.checked })}
+                                    checked={formData.role === 'admin'}
+                                    onChange={e => setFormData({ ...formData, role: e.target.checked ? 'admin' : 'user' })}
                                     className="w-5 h-5 rounded-lg border-gray-200 text-indigo-600 focus:ring-indigo-500"
                                 />
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest group-hover:text-gray-600 transition-colors">Grant Admin Privileges</span>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest group-hover:text-gray-600 transition-colors">Grant Admin Privileges</span>
                             </label>
                         </div>
 

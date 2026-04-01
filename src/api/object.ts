@@ -1,5 +1,6 @@
 import client from './client';
 import { WytObject, BaseResponse, ObjectType, ObjectAlias } from './types';
+import { supabase } from '../utils/supabase';
 
 // Public/Common operations
 export const searchObjects = async (query: string): Promise<BaseResponse<WytObject>> => {
@@ -25,14 +26,32 @@ export const createObject = async (data: Partial<WytObject>): Promise<BaseRespon
 };
 
 export const uploadObjectIcon = async (file: File): Promise<BaseResponse<string>> => {
-  const formData = new FormData();
-  formData.append('file', file);
-  const response = await client.post<BaseResponse<string>>('/objects/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
-  return response.data;
+  try {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `objects/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('images')
+      .upload(filePath, file);
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('images')
+      .getPublicUrl(filePath);
+
+    return {
+      item: publicUrl
+    } as any;
+  } catch (error: any) {
+    console.error('Error uploading object icon:', error);
+    return {
+      error: error.message || 'Failed to upload icon'
+    } as any;
+  }
 };
 
 export const updateObject = async (id: string, data: Partial<WytObject>): Promise<BaseResponse<WytObject>> => {

@@ -23,6 +23,11 @@ export const getRelationsForObject = async (objectId: string): Promise<BaseRespo
   return response.data;
 };
 
+export const getAllRelations = async (): Promise<BaseResponse<ObjectRelation>> => {
+  const response = await client.get<BaseResponse<ObjectRelation>>('/object-relations/all');
+  return response.data;
+};
+
 export const createRelation = async (data: { object_id: string; related_object_id: string; relation_type: string }): Promise<BaseResponse<ObjectRelation>> => {
   const response = await client.post<BaseResponse<ObjectRelation>>('/object-relations/', data);
   return response.data;

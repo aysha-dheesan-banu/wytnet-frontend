@@ -58,7 +58,7 @@ const NotificationDropdown = () => {
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <button 
+      <button
         onClick={() => setIsOpen(!isOpen)}
         className="relative text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors focus:outline-none"
       >
@@ -83,7 +83,7 @@ const NotificationDropdown = () => {
                 </span>
               )}
             </h3>
-            <button 
+            <button
               onClick={markAllAsRead}
               className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 uppercase tracking-widest flex items-center gap-1.5 transition-all"
             >
@@ -100,9 +100,9 @@ const NotificationDropdown = () => {
               </div>
             ) : notifications.length > 0 ? (
               notifications.map((notification) => (
-                <NotificationItem 
-                  key={notification.id} 
-                  notification={notification} 
+                <NotificationItem
+                  key={notification.id}
+                  notification={notification}
                   onRead={markAsRead}
                   onClick={handleNotificationClick}
                 />
@@ -115,11 +115,7 @@ const NotificationDropdown = () => {
             )}
           </div>
 
-          <div className="p-4 bg-gray-50/50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 text-center">
-            <button className="text-[10px] font-black text-gray-400 hover:text-gray-600 dark:hover:text-indigo-400 uppercase tracking-[0.2em] transition-all">
-              View all notifications
-            </button>
-          </div>
+          <div className="h-4 bg-gray-50/50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800"></div>
         </div>
       )}
     </div>

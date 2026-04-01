@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
 import { getPosts, deletePost, createPost } from '../../api/post';
 import { Post } from '../../api/types';
 import ConfirmModal from './ConfirmModal';
 import CreatePostModal from './CreatePostModal';
+import Pagination from './Pagination';
 
 interface PostManagerProps {
     createTrigger: number;
@@ -13,6 +15,8 @@ interface PostManagerProps {
 const PostManager: React.FC<PostManagerProps> = ({ createTrigger, onTriggerHandled }) => {
     const queryClient = useQueryClient();
     const [search, setSearch] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [confirmDeleteState, setConfirmDeleteState] = useState<{ isOpen: boolean; id: string | null; title: string }>({
         isOpen: false,
@@ -41,7 +45,7 @@ const PostManager: React.FC<PostManagerProps> = ({ createTrigger, onTriggerHandl
             setIsCreateModalOpen(false);
         },
         onError: (err: any) => {
-            alert(err?.response?.data?.detail || 'Error creating post');
+            toast.error(err?.response?.data?.detail || 'Error creating post');
         }
     });
 
@@ -52,7 +56,7 @@ const PostManager: React.FC<PostManagerProps> = ({ createTrigger, onTriggerHandl
             setConfirmDeleteState({ isOpen: false, id: null, title: '' });
         },
         onError: () => {
-            alert('Error deleting post');
+            toast.error('Error deleting post');
         }
     });
 
@@ -75,6 +79,17 @@ const PostManager: React.FC<PostManagerProps> = ({ createTrigger, onTriggerHandl
         p.content?.toLowerCase().includes(search.toLowerCase())
     );
 
+    const totalPages = Math.ceil(filteredPosts.length / itemsPerPage);
+    const paginatedPosts = filteredPosts.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    // Reset to page 1 on search
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [search]);
+
     const stats = [
         { label: 'Total', value: posts.length, icon: 'article', color: 'text-blue-600', bg: 'bg-blue-50' },
         { label: 'Active', value: posts.filter(p => !p.valid_until || new Date(p.valid_until) > new Date()).length, icon: 'check_circle', color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -88,15 +103,15 @@ const PostManager: React.FC<PostManagerProps> = ({ createTrigger, onTriggerHandl
             {/* Header with Refresh */}
             <div className="flex justify-between items-center mb-8">
                 <div>
-                    <h1 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3">
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
                         <span className="material-icons text-indigo-600">article</span>
                         All Posts
                     </h1>
-                    <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mt-1">Manage and moderate WytWall posts</p>
+                    <p className="text-gray-400 text-[10px] font-semibold uppercase tracking-widest mt-1">Manage and moderate WytWall posts</p>
                 </div>
                 <button
                     onClick={() => queryClient.invalidateQueries({ queryKey: ['admin-posts'] })}
-                    className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all shadow-sm active:scale-95"
+                    className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-gray-50 transition-all shadow-sm active:scale-95"
                 >
                     <span className="material-icons text-sm">refresh</span>
                     Refresh
@@ -111,8 +126,8 @@ const PostManager: React.FC<PostManagerProps> = ({ createTrigger, onTriggerHandl
                             <span className="material-icons">{stat.icon}</span>
                         </div>
                         <div>
-                            <h3 className="text-xl font-black text-gray-900 dark:text-white tracking-tighter leading-none">{stat.value}</h3>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">{stat.label}</p>
+                            <h3 className="text-xl font-bold text-gray-900 dark:text-white tracking-tighter leading-none">{stat.value}</h3>
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mt-1">{stat.label}</p>
                         </div>
                     </div>
                 ))}
@@ -136,15 +151,6 @@ const PostManager: React.FC<PostManagerProps> = ({ createTrigger, onTriggerHandl
                     </div>
 
                     <div className="flex gap-2">
-                        <select className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500 outline-none">
-                            <option>Type</option>
-                        </select>
-                        <select className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500 outline-none">
-                            <option>Status</option>
-                        </select>
-                        <select className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500 outline-none">
-                            <option>Category</option>
-                        </select>
                         <button className="p-2.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-400 hover:text-indigo-600 transition-colors">
                             <span className="material-icons text-sm">tune</span>
                         </button>
@@ -157,15 +163,13 @@ const PostManager: React.FC<PostManagerProps> = ({ createTrigger, onTriggerHandl
                 <table className="w-full text-left font-sans">
                     <thead className="bg-gray-50 dark:bg-slate-900 border-b border-gray-100 dark:border-slate-700">
                         <tr>
-                            <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Type</th>
-                            <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Category</th>
-                            <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Description</th>
-                            <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">User</th>
-                            <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Date</th>
-                            <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Eng.</th>
-                            <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Public</th>
-                            <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
-                            <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+                            <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type</th>
+                            <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Title</th>
+                            <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">User</th>
+                            <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date</th>
+                            <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Visibility</th>
+                            <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</th>
+                            <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 dark:divide-slate-700/50">
@@ -173,56 +177,53 @@ const PostManager: React.FC<PostManagerProps> = ({ createTrigger, onTriggerHandl
                             <tr><td colSpan={9} className="px-6 py-20 text-center">
                                 <div className="flex flex-col items-center gap-3">
                                     <div className="w-8 h-8 border-4 border-indigo-50/50 border-t-indigo-600 rounded-full animate-spin"></div>
-                                    <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Loading Posts...</span>
+                                    <span className="text-gray-400 font-semibold uppercase text-[10px] tracking-widest">Loading Posts...</span>
                                 </div>
                             </td></tr>
                         ) : filteredPosts.length === 0 ? (
                             <tr><td colSpan={9} className="px-6 py-20 text-center text-gray-400 uppercase text-[10px] font-bold tracking-widest italic">No matching posts</td></tr>
                         ) : (
-                            filteredPosts.map(post => (
+                            paginatedPosts.map(post => (
                                 <tr key={post.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/20 transition-all group">
                                     <td className="px-6 py-4">
                                         {post.post_type === 'OFFER' ? (
-                                            <span className="px-2.5 py-1 bg-emerald-500 text-white rounded-full text-[8px] font-black uppercase tracking-widest leading-none">Offer</span>
+                                            <span className="px-2.5 py-1 bg-emerald-500 text-white rounded-full text-[8px] font-bold uppercase tracking-widest leading-none">Offer</span>
                                         ) : (
-                                            <span className="px-2.5 py-1 bg-indigo-500 text-white rounded-full text-[8px] font-black uppercase tracking-widest leading-none">Need</span>
+                                            <span className="px-2.5 py-1 bg-indigo-500 text-white rounded-full text-[8px] font-bold uppercase tracking-widest leading-none">Need</span>
                                         )}
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight">Concept</span>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="text-[10px] text-gray-900 dark:text-gray-100 font-bold max-w-[250px] leading-relaxed">
+                                        <div className="text-[10px] text-gray-900 dark:text-gray-100 font-semibold max-w-[250px] leading-relaxed">
                                             {post.title || post.content}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 bg-gray-900 rounded-full flex items-center justify-center text-white text-[10px] font-black uppercase border border-white/10 overflow-hidden">
+                                            <div className="w-8 h-8 bg-gray-900 rounded-full flex items-center justify-center text-white text-[10px] font-bold uppercase border border-white/10 overflow-hidden">
                                                 {post.user?.username?.[0] || post.owner_id?.substring(0, 1) || 'A'}
                                             </div>
                                             <div className="flex flex-col">
-                                                <span className="text-[10px] font-black text-gray-900 dark:text-white uppercase leading-none mb-0.5">{post.user?.full_name || post.user?.username || 'User'}</span>
-                                                <span className="text-[9px] text-gray-400 font-bold lowercase leading-none">{post.user?.email || 'no-email@wytnet.com'}</span>
+                                                <span className="text-[10px] font-bold text-gray-900 dark:text-white uppercase leading-none mb-0.5">{post.user?.full_name || post.user?.username || 'User'}</span>
+                                                <span className="text-[9px] text-gray-400 font-semibold lowercase leading-none">{post.user?.email || 'no-email@wytnet.com'}</span>
                                             </div>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase">{new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: '2-digit' })}</span>
+                                        <span className="text-[10px] font-semibold text-gray-400 uppercase">{new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: '2-digit' })}</span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2 text-gray-300">
-                                            <span className="material-icons text-sm">favorite_border</span>
-                                            <span className="material-icons text-sm">chat_bubble_outline</span>
-                                        </div>
+                                        {post.is_public !== false ? (
+                                            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[8px] font-bold uppercase tracking-widest leading-none border border-emerald-100 italic">Public</span>
+                                        ) : (
+                                            <span className="px-2.5 py-1 bg-gray-50 text-gray-400 rounded-full text-[8px] font-bold uppercase tracking-widest leading-none border border-gray-100 italic">Private</span>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4">
-                                        <div className="w-10 h-5 bg-indigo-600 rounded-full relative p-0.5 shadow-inner">
-                                            <div className="absolute right-0.5 top-0.5 w-4 h-4 bg-white rounded-full"></div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className="px-2.5 py-1 bg-emerald-500 text-white rounded-full text-[8px] font-black uppercase tracking-widest leading-none">Active</span>
+                                        {!post.valid_until || new Date(post.valid_until) > new Date() ? (
+                                            <span className="px-2.5 py-1 bg-emerald-500 text-white rounded-full text-[8px] font-bold uppercase tracking-widest leading-none">Active</span>
+                                        ) : (
+                                            <span className="px-2.5 py-1 bg-orange-500 text-white rounded-full text-[8px] font-bold uppercase tracking-widest leading-none">Expired</span>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <button onClick={() => handleDelete(post.id, post.title!)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all">
@@ -234,6 +235,13 @@ const PostManager: React.FC<PostManagerProps> = ({ createTrigger, onTriggerHandl
                         )}
                     </tbody>
                 </table>
+                <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={setCurrentPage}
+                    totalItems={filteredPosts.length}
+                    itemsPerPage={itemsPerPage}
+                />
             </div>
 
             <CreatePostModal

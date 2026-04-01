@@ -177,11 +177,15 @@ const AdminDashboard: React.FC = () => {
                   { id: 'objects-list', label: 'All Objects', icon: 'bubble_chart' },
                   { id: 'object-types', label: 'Object Types', icon: 'category' },
                   { id: 'object-aliases', label: 'Object Aliases', icon: 'label' },
+                  { id: 'object-relations', label: 'Object Relations', icon: 'hub' },
                 ].filter(tab => {
+                  if (activeTab === 'overview') {
+                    return false;
+                  }
                   if (['users', 'posts'].includes(activeTab)) {
                     return tab.id === activeTab;
                   }
-                  return ['objects-list', 'object-types', 'object-aliases'].includes(tab.id);
+                  return ['objects-list', 'object-types', 'object-aliases', 'object-relations'].includes(tab.id);
                 }).map((tab) => (
                   <button
                     key={tab.id}

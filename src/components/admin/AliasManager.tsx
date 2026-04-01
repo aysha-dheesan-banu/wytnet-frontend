@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
 import { getObjects, getObjectTypes } from '../../api/object';
 import { getAliasesForObject, createAlias, deleteAlias } from '../../api/admin';
 import { WytObject } from '../../api/types';
 import ConfirmModal from './ConfirmModal';
+import Pagination from './Pagination';
 
 interface AliasManagerProps {
   createTrigger: number;
@@ -13,6 +15,8 @@ interface AliasManagerProps {
 const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHandled }) => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const [filterType, setFilterType] = useState('All Types');
   const [selectedObject, setSelectedObject] = useState<WytObject | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -29,7 +33,7 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
     title: '',
     message: '',
     confirmText: '',
-    onConfirm: () => {}
+    onConfirm: () => { }
   });
   const [newAliasName, setNewAliasName] = useState('');
   const [tempSourceId, setTempSourceId] = useState('');
@@ -90,7 +94,7 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
       queryClient.invalidateQueries({ queryKey: ['objects'] });
     },
     onError: () => {
-      alert('Error synchronizing alias');
+      toast.error('Error synchronizing alias');
     }
   });
 
@@ -103,7 +107,7 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
       setIsModalOpen(false);
     },
     onError: () => {
-      alert('Error registering alias');
+      toast.error('Error registering alias');
     }
   });
 
@@ -117,14 +121,14 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
       setConfirmState(prev => ({ ...prev, isOpen: false }));
     },
     onError: () => {
-      alert('Error clearing aliases');
+      toast.error('Error clearing aliases');
     }
   });
 
   const handleClearAllAliases = (obj: WytObject) => {
     if (!obj.aliases || obj.aliases.length === 0) {
-       alert('No aliases to clear for this object.');
-       return;
+      toast.error('No aliases to clear for this object.');
+      return;
     }
     setConfirmState({
       isOpen: true,
@@ -151,10 +155,10 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
     if (icon.startsWith('http') || icon.startsWith('/uploads/')) {
       const src = icon.startsWith('http') ? icon : `http://localhost:8000${icon}`;
       return (
-        <img 
-          src={src} 
-          alt="" 
-          className="w-8 h-8 object-contain rounded-lg" 
+        <img
+          src={src}
+          alt=""
+          className="w-8 h-8 object-contain rounded-lg"
           onError={(e) => {
             e.currentTarget.style.display = 'none';
             const fallback = document.createElement('span');
@@ -165,8 +169,8 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
         />
       );
     }
-    const iconName = (!icon || icon.length < 3 || ['string', 'icon', 'none', 'null'].includes(icon.toLowerCase())) 
-      ? 'category' 
+    const iconName = (!icon || icon.length < 3 || ['string', 'icon', 'none', 'null'].includes(icon.toLowerCase()))
+      ? 'category'
       : icon;
     return <span className={`material-icons ${className} text-indigo-500`}>{iconName}</span>;
   };
@@ -186,6 +190,17 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
     return matchesSearch && matchesType;
   });
 
+  const totalPages = Math.ceil(filteredObjects.length / itemsPerPage);
+  const paginatedObjects = filteredObjects.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Reset to page 1 on search
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterType]);
+
   const totalAliases = objects.reduce((acc, o) => acc + (o.aliases?.length || 0), 0);
   const entitiesWithAliases = objects.filter(o => (o.aliases?.length || 0) > 0).length;
 
@@ -201,9 +216,9 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {stats.map((stat, i) => (
           <div key={i} className="p-6 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-3xl shadow-sm hover:shadow-md transition-all">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">{stat.label}</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">{stat.label}</p>
             <div className="flex items-end justify-between">
-              <h3 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter">{stat.value}</h3>
+              <h3 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tighter">{stat.value}</h3>
               <div className="w-10 h-10 bg-gray-50 dark:bg-slate-900 rounded-xl flex items-center justify-center text-gray-400">
                 <span className="material-icons">{stat.icon}</span>
               </div>
@@ -215,21 +230,21 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
       {/* Filter Bar */}
       <div className="flex flex-wrap items-center gap-3 mb-6 bg-gray-50/50 dark:bg-slate-900/30 p-2 rounded-2xl border border-gray-100 dark:border-slate-800">
         <div className="relative flex-1 min-w-[200px]">
-          <input 
-            type="text" 
-            placeholder="Search objects by name..." 
+          <input
+            type="text"
+            placeholder="Search objects by name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-sm focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all dark:text-white"
           />
           <span className="material-icons absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">search</span>
         </div>
-        
-        <select 
+
+        <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
           style={{ appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none' }}
-          className="px-6 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-bold uppercase tracking-widest text-gray-500 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all text-center"
+          className="px-6 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-xs font-semibold uppercase tracking-widest text-gray-500 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all text-center"
         >
           <option>All Types</option>
           {types.map(t => <option key={t.id}>{t.name}</option>)}
@@ -241,25 +256,25 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
         <table className="w-full text-left font-sans">
           <thead className="bg-gray-50 dark:bg-slate-900 border-b border-gray-100 dark:border-slate-700">
             <tr>
-              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest w-24">Icon</th>
-              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Object Name</th>
-              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Type</th>
-              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Aliases</th>
-              <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+              <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest w-24">Icon</th>
+              <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Object Name</th>
+              <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type</th>
+              <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Aliases</th>
+              <th className="px-6 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50 dark:divide-slate-700/50">
             {loadingObjects ? (
-               <tr><td colSpan={5} className="px-6 py-20 text-center">
+              <tr><td colSpan={5} className="px-6 py-20 text-center">
                 <div className="flex flex-col items-center gap-3">
-                   <div className="w-8 h-8 border-4 border-indigo-50/50 border-t-indigo-600 rounded-full animate-spin"></div>
-                   <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Loading Objects...</span>
+                  <div className="w-8 h-8 border-4 border-indigo-50/50 border-t-indigo-600 rounded-full animate-spin"></div>
+                  <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Loading Objects...</span>
                 </div>
               </td></tr>
             ) : filteredObjects.length === 0 ? (
               <tr><td colSpan={5} className="px-6 py-20 text-center text-gray-400 uppercase text-[10px] font-bold tracking-widest italic">No objects found</td></tr>
             ) : (
-              filteredObjects.map(obj => (
+              paginatedObjects.map(obj => (
                 <tr key={obj.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/20 transition-all group">
                   <td className="px-6 py-4">
                     <div className="w-12 h-12 bg-gray-50 dark:bg-slate-900 rounded-2xl flex items-center justify-center text-gray-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors overflow-hidden">
@@ -268,39 +283,39 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
                   </td>
                   <td className="px-6 py-4">
                     <div>
-                      <div className="text-sm font-black text-gray-900 dark:text-white tracking-tight uppercase">{obj.name}</div>
-                      <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-0.5">
+                      <div className="text-sm font-bold text-gray-900 dark:text-white tracking-tight uppercase">{obj.name}</div>
+                      <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">
                         {types.find(t => t.id === obj.type_id)?.name || obj.category || 'General'}
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                     <span className="px-3 py-1 bg-gray-50 dark:bg-slate-900 text-gray-500 rounded-lg text-[9px] font-black uppercase tracking-widest border border-gray-100 dark:border-slate-700">
-                        {types.find(t => t.id === obj.type_id)?.name || 'Default'}
-                     </span>
+                    <span className="px-3 py-1 bg-gray-50 dark:bg-slate-900 text-gray-500 rounded-lg text-[9px] font-bold uppercase tracking-widest border border-gray-100 dark:border-slate-700">
+                      {types.find(t => t.id === obj.type_id)?.name || 'Default'}
+                    </span>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="text-sm font-black text-gray-900 dark:text-white ml-0.5">
+                    <span className="text-sm font-bold text-gray-900 dark:text-white ml-0.5">
                       {obj.aliases?.length || 0}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button 
+                      <button
                         onClick={() => handleOpenManager(obj, 'view')}
                         className="p-3 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-all active:scale-90"
                         title="View Aliases"
                       >
                         <span className="material-icons text-lg">visibility</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleOpenManager(obj, 'edit')}
                         className="p-3 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-all active:scale-90"
                         title="Edit Aliases"
                       >
                         <span className="material-icons text-lg">edit</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleClearAllAliases(obj)}
                         className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50/50 dark:hover:bg-red-900/20 rounded-xl transition-all active:scale-90"
                         title="Clear All Aliases"
@@ -314,6 +329,13 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
             )}
           </tbody>
         </table>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          totalItems={filteredObjects.length}
+          itemsPerPage={itemsPerPage}
+        />
       </div>
 
       {/* Management Modal */}
@@ -323,12 +345,12 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
           <div className="relative w-full max-w-2xl bg-white dark:bg-slate-800 rounded-[3rem] shadow-2xl p-12 border border-gray-100 dark:border-slate-700 animate-in fade-in zoom-in duration-200">
             <div className="flex justify-between items-start mb-10">
               <div>
-                <h3 className="text-3xl font-black text-gray-900 dark:text-white uppercase tracking-tighter">
+                <h3 className="text-3xl font-bold text-gray-900 dark:text-white uppercase tracking-tighter">
                   {modalMode === 'create' ? 'Create New Alias' : 'MANAGE ALIASES'}
                 </h3>
                 <p className="text-gray-400 font-medium mt-1">
                   {modalMode === 'create' ? 'Create a new alias for your knowledge graph' : 'Configuring aliases for'}{' '}
-                  <span className="text-indigo-600 font-bold">{selectedObject?.name}</span>
+                  <span className="text-indigo-600 font-semibold">{selectedObject?.name}</span>
                 </p>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="w-12 h-12 rounded-full bg-gray-50 dark:bg-slate-900 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors">
@@ -341,12 +363,12 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
               <div className="bg-gray-50/50 dark:bg-slate-900/50 p-8 rounded-[2.5rem] mb-8 border border-gray-100 dark:border-slate-800 flex-shrink-0 animate-in fade-in slide-in-from-top-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2.5 ml-1 text-center">Select Object</label>
-                    <select 
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5 ml-1 text-center">Select Object</label>
+                    <select
                       value={tempSourceId}
                       onChange={(e) => setTempSourceId(e.target.value)}
                       style={{ appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none' }}
-                      className="w-full px-5 py-4 bg-white dark:bg-slate-800 border-2 border-transparent focus:border-indigo-500/20 rounded-2xl text-sm font-bold outline-none transition-all dark:text-white text-center"
+                      className="w-full px-5 py-4 bg-white dark:bg-slate-800 border-2 border-transparent focus:border-indigo-500/20 rounded-2xl text-sm font-semibold outline-none transition-all dark:text-white text-center"
                     >
                       <option value="">Select Object</option>
                       {objects.map(obj => (
@@ -355,20 +377,20 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2.5 ml-1 text-center">Add Alias</label>
-                    <input 
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5 ml-1 text-center">Add Alias</label>
+                    <input
                       type="text"
                       placeholder="e.g. Laptop, Portable Computer"
                       value={newAliasName}
                       onChange={(e) => setNewAliasName(e.target.value)}
-                      className="w-full px-5 py-4 bg-white dark:bg-slate-800 border-2 border-transparent focus:border-indigo-500/20 rounded-2xl text-sm font-bold outline-none transition-all dark:text-white text-center"
+                      className="w-full px-5 py-4 bg-white dark:bg-slate-800 border-2 border-transparent focus:border-indigo-500/20 rounded-2xl text-sm font-semibold outline-none transition-all dark:text-white text-center"
                     />
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => registerMutation.mutate({ object_id: tempSourceId, alias: newAliasName })}
                   disabled={!tempSourceId || !newAliasName || registerMutation.isPending}
-                  className="w-full py-5 bg-indigo-600 text-white rounded-[1.5rem] font-black text-[12px] uppercase tracking-[0.2em] transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-50"
+                  className="w-full py-5 bg-indigo-600 text-white rounded-[1.5rem] font-bold text-[12px] uppercase tracking-[0.2em] transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-50"
                 >
                   {registerMutation.isPending ? 'Syncing...' : 'Create Alias'}
                 </button>
@@ -379,28 +401,28 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
             <div className="flex flex-col gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
               {loadingAliases ? (
                 <div className="py-20 text-center">
-                   <div className="w-8 h-8 border-4 border-indigo-50/50 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4"></div>
-                   <span className="text-gray-400 font-black uppercase text-[10px] tracking-widest">Querying Records...</span>
+                  <div className="w-8 h-8 border-4 border-indigo-50/50 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4"></div>
+                  <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Querying Records...</span>
                 </div>
               ) : (
                 <>
                   {[...aliases].sort((a, b) => a.alias.localeCompare(b.alias)).map(alias => (
                     <div key={alias.id} className="flex items-center gap-4 bg-white dark:bg-slate-900 px-8 py-5 rounded-[2.5rem] border border-gray-100 dark:border-slate-800 transition-all shadow-sm">
                       <div className="flex-1">
-                        <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-4">Current Entry</label>
-                        <input 
+                        <label className="block text-[8px] font-bold text-gray-400 uppercase tracking-widest mb-1 ml-4">Current Entry</label>
+                        <input
                           type="text"
                           value={rowValues[alias.id] || ''}
                           onChange={(e) => handleRowValueChange(alias.id, e.target.value)}
-                          className="w-full px-5 py-3 bg-gray-50/50 dark:bg-slate-800/50 rounded-2xl text-xs font-bold outline-none border border-transparent focus:border-indigo-500/20 dark:text-white transition-all"
+                          className="w-full px-5 py-3 bg-gray-50/50 dark:bg-slate-800/50 rounded-2xl text-xs font-semibold outline-none border border-transparent focus:border-indigo-500/20 dark:text-white transition-all"
                           readOnly={modalMode === 'view'}
                         />
                       </div>
                       {modalMode === 'edit' && (
-                        <button 
+                        <button
                           onClick={() => handleRowUpdate(alias.id)}
                           disabled={updateMutation.isPending && updateMutation.variables?.id === alias.id}
-                          className="px-8 py-3.5 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-50"
+                          className="px-8 py-3.5 bg-indigo-600 text-white rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-50"
                         >
                           {updateMutation.isPending && updateMutation.variables?.id === alias.id ? '...' : 'Update'}
                         </button>
@@ -410,7 +432,7 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
 
                   {aliases.length === 0 && modalMode === 'view' && (
                     <div className="bg-gray-50/50 dark:bg-slate-900/50 rounded-[2.5rem] p-16 text-center border-2 border-dashed border-gray-100 dark:border-slate-800">
-                      <p className="text-gray-400 font-black uppercase tracking-widest text-[10px]">No linked records found</p>
+                      <p className="text-gray-400 font-bold uppercase tracking-widest text-[10px]">No linked records found</p>
                     </div>
                   )}
                 </>
@@ -420,7 +442,7 @@ const AliasManager: React.FC<AliasManagerProps> = ({ createTrigger, onTriggerHan
         </div>
       )}
       {/* Branded Confirmation Modal */}
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={confirmState.isOpen}
         onClose={() => setConfirmState({ ...confirmState, isOpen: false })}
         onConfirm={confirmState.onConfirm}

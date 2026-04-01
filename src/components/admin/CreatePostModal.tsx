@@ -29,8 +29,8 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClose, onCo
                 <div className="p-8">
                     <div className="flex justify-between items-start mb-6">
                         <div>
-                            <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Create WytPost</h3>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Post content to the community board</p>
+                            <h3 className="text-xl font-bold text-gray-900 dark:text-white uppercase tracking-tight">Create WytPost</h3>
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mt-1">Post content to the community board</p>
                         </div>
                         <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors text-gray-400">
                             <span className="material-icons">close</span>
@@ -40,7 +40,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClose, onCo
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Post Type</label>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Post Type</label>
                                 <select
                                     value={formData.post_type}
                                     onChange={e => setFormData({ ...formData, post_type: e.target.value })}
@@ -51,7 +51,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClose, onCo
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Visibility</label>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Visibility</label>
                                 <select
                                     value={formData.is_public ? 'public' : 'private'}
                                     onChange={e => setFormData({ ...formData, is_public: e.target.value === 'public' })}
@@ -64,7 +64,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClose, onCo
                         </div>
 
                         <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Title</label>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Title</label>
                             <input
                                 required
                                 type="text"
@@ -76,7 +76,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClose, onCo
                         </div>
 
                         <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Content / Description</label>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Content / Description</label>
                             <textarea
                                 required
                                 rows={4}
